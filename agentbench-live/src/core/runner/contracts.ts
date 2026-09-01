@@ -37,6 +37,15 @@ export type VerificationContext = {
   submission: SubmissionPackage;
   remainingMs(): number;
   runWithDeadline<T>(label: string, operation: () => Promise<T>): Promise<T>;
+  acquireWithDeadline<T>(
+    label: string,
+    operation: () => Promise<T>,
+    cleanup: (resource: T) => Promise<void>,
+  ): Promise<T>;
+  runWithCleanupGrace<T>(
+    label: string,
+    operation: () => Promise<T>,
+  ): Promise<T>;
   onStage(
     stage: "provisioning" | "building" | "verifying" | "capturing",
   ): void;
@@ -69,4 +78,5 @@ export type OrchestratorDependencies = {
   solariApiKey: string;
   generationResources?: { services: SolariServices };
   now?: () => number;
+  cleanupGraceMs?: number;
 };

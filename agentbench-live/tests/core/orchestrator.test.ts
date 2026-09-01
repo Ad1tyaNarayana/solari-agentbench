@@ -56,6 +56,9 @@ function createHarness(options: {
   taskBudgetMs?: number;
   generationResourceViolation?: boolean;
   generationInventoryError?: boolean;
+  lateProvisionMs?: number;
+  lateGenerationResourceMs?: number;
+  cleanupGraceMs?: number;
   afterDispose?: () => void;
 } = {}) {
   const repository = new SqliteRunRepository(":memory:");
@@ -69,6 +72,8 @@ function createHarness(options: {
   };
   const observedVerificationStages: string[] = [];
   const generationCleanup: string[] = [];
+  let lateProvisionKills = 0;
+  let lateGenerationResourceAvailable = false;
   const planner: PlannerPort & { calls: unknown[] } = {
     calls: [],
     async plan(input) {
@@ -85,6 +90,12 @@ function createHarness(options: {
     async generate(input) {
       this.calls.push(input);
       if (options.generatorError) throw options.generatorError;
+      if (options.lateGenerationResourceMs !== undefined) {
+        await new Promise((resolveDelay) =>
+          setTimeout(resolveDelay, options.lateGenerationResourceMs),
+        );
+        lateGenerationResourceAvailable = true;
+      }
       options.afterGeneration?.();
       return {
         stdout: "generated",
@@ -121,6 +132,25 @@ function createHarness(options: {
     calls: [],
     async verify(input) {
       this.calls.push(input);
+      if (options.lateProvisionMs !== undefined) {
+        input.onStage("provisioning");
+        await input.acquireWithDeadline(
+          "late sandbox provisioning",
+          () =>
+            new Promise<{ kill(): Promise<void> }>((resolveHandle) => {
+              setTimeout(
+                () =>
+                  resolveHandle({
+                    async kill() {
+                      lateProvisionKills += 1;
+                    },
+                  }),
+                options.lateProvisionMs,
+              );
+            }),
+          (handle) => handle.kill(),
+        );
+      }
       options.duringVerification?.(input.remainingMs());
       for (const stage of [
         "provisioning",
@@ -161,7 +191,9 @@ function createHarness(options: {
   let sandboxLists = 0;
   let desktopLists = 0;
   const generationResources =
-    options.generationResourceViolation || options.generationInventoryError
+    options.generationResourceViolation ||
+    options.generationInventoryError ||
+    options.lateGenerationResourceMs !== undefined
     ? {
         services: {
           browser: {
@@ -178,6 +210,9 @@ function createHarness(options: {
               if (options.generationInventoryError && sandboxLists === 2) {
                 throw new Error("inventory unavailable");
               }
+              if (options.lateGenerationResourceMs !== undefined) {
+                return lateGenerationResourceAvailable ? ["sandbox-late"] : [];
+              }
               return sandboxLists === 1 ? [] : ["sandbox-1", "sandbox-2"];
             },
             async kill(id: string) {
@@ -187,6 +222,7 @@ function createHarness(options: {
           desktop: {
             async listIds() {
               desktopLists += 1;
+              if (options.lateGenerationResourceMs !== undefined) return [];
               return desktopLists === 1 ? [] : ["desktop-1"];
             },
             async kill(id: string) {
@@ -217,6 +253,7 @@ function createHarness(options: {
     schemaPath: "C:\\schemas\\run-plan.schema.json",
     solariApiKey: "test-key",
     now: options.now,
+    cleanupGraceMs: options.cleanupGraceMs,
     generationResources: generationResources as never,
   });
   return {
@@ -231,6 +268,12 @@ function createHarness(options: {
     generationCleanup,
     get workspaceCalls() {
       return workspaceCalls;
+    },
+    get lateProvisionKills() {
+      return lateProvisionKills;
+    },
+    get sandboxLists() {
+      return sandboxLists;
     },
   };
 }
@@ -402,6 +445,48 @@ test("enforces the total deadline even when a planner ignores its process timeou
     stage: "failed",
     failureCode: "agent_timeout",
   });
+  harness.repository.close();
+});
+
+test("awaits cleanup of a provisioning handle that resolves after the run deadline", async () => {
+  const harness = createHarness({
+    taskBudgetMs: 20,
+    lateProvisionMs: 30,
+    cleanupGraceMs: 100,
+  });
+
+  const run = await harness.orchestrator.run({
+    taskId: "url-shortener",
+    agentId: "sol-low",
+  });
+
+  expect(run).toMatchObject({
+    stage: "failed",
+    failureCode: "agent_timeout",
+  });
+  expect(harness.lateProvisionKills).toBe(1);
+  harness.repository.close();
+});
+
+test("uses cleanup grace for inventory and teardown after generation exceeds the deadline", async () => {
+  const harness = createHarness({
+    taskBudgetMs: 20,
+    lateGenerationResourceMs: 50,
+    cleanupGraceMs: 10,
+  });
+
+  const run = await harness.orchestrator.run({
+    taskId: "url-shortener",
+    agentId: "sol-low",
+  });
+
+  expect(run).toMatchObject({
+    stage: "failed",
+    failureCode: "agent_timeout",
+  });
+  expect(harness.sandboxLists).toBeGreaterThanOrEqual(2);
+  expect(harness.generationCleanup).toEqual(["sandbox:sandbox-late"]);
+  expect(harness.verifier.calls).toHaveLength(0);
   harness.repository.close();
 });
 

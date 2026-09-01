@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { AgentConfig } from "@/core/domain/run";
 import type { Primitive, RunPlan } from "@/core/domain/plan";
 import type { JsonlEvent } from "./jsonl";
@@ -72,6 +73,12 @@ const solariToolAllowlists: Record<Primitive, readonly string[]> = {
   ],
 };
 
+const solariCreateTools: Record<Primitive, string> = {
+  browser: "solari_browser_create",
+  sandbox: "solari_sandbox_create",
+  desktop: "solari_desktop_create",
+};
+
 export function solariToolsForPrimitives(primitives: Primitive[]): string[] {
   const tools: string[] = [];
   const seen = new Set<string>();
@@ -100,6 +107,14 @@ export function solariPrimitivesForTool(toolName: string): Primitive[] {
 export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
   const prompt = `${input.taskPrompt}\n\nApproved RunPlan:\n${JSON.stringify(input.plan, null, 2)}\n\nWrite the complete final submission under submission/.`;
   const enabledTools = solariToolsForPrimitives(input.plan.primitives);
+  const guardPath = resolve("src/core/agents/solari-mcp-guard.mjs");
+  const serverArgs = [
+    guardPath,
+    input.plan.primitives.map((primitive) => solariCreateTools[primitive]).join(","),
+    "npx",
+    "-y",
+    "@solarisdk/mcp@0.4.3",
+  ];
   return {
     command: "codex",
     args: [
@@ -113,9 +128,9 @@ export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
       "-c",
       `model_reasoning_effort=\"${input.agent.reasoningEffort}\"`,
       "-c",
-      'mcp_servers.solari.command="npx"',
+      `mcp_servers.solari.command=${JSON.stringify(process.execPath)}`,
       "-c",
-      'mcp_servers.solari.args=["-y","@solarisdk/mcp@0.4.3"]',
+      `mcp_servers.solari.args=${JSON.stringify(serverArgs)}`,
       "-c",
       `mcp_servers.solari.enabled_tools=${JSON.stringify(enabledTools)}`,
       "--cd",

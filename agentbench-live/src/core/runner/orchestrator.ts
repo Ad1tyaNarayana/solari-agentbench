@@ -82,14 +82,40 @@ export class AgentBenchOrchestrator {
     const now = this.dependencies.now ?? Date.now;
     const startedMs = now();
     const deadlineAt = startedMs + task.budget.totalMs;
+    const cleanupGraceMs = this.dependencies.cleanupGraceMs ?? 10_000;
     const startedAt = new Date(startedMs).toISOString();
     const remainingMs = () => this.remainingMs(deadlineAt, now);
     const runWithDeadline = <T>(
       label: string,
       operation: () => Promise<T>,
     ) => this.runWithDeadline(label, remainingMs, operation);
+    const runWithDeadlineSettled = <T>(
+      label: string,
+      operation: () => Promise<T>,
+    ) => this.runWithDeadlineSettled(
+      label,
+      remainingMs,
+      cleanupGraceMs,
+      operation,
+    );
+    const runWithCleanupGrace = <T>(
+      label: string,
+      operation: () => Promise<T>,
+    ) => this.runWithCleanupGrace(label, cleanupGraceMs, operation);
     let run = this.dependencies.repository.update(created.id, { startedAt });
     let workspace: DisposableWorkspace | undefined;
+    const acquireWithDeadline = <T>(
+      label: string,
+      operation: () => Promise<T>,
+      cleanup: (resource: T) => Promise<void>,
+    ) => this.acquireWithDeadline(
+      label,
+      remainingMs,
+      cleanupGraceMs,
+      operation,
+      cleanup,
+      (detail) => this.recordCleanupIssue(run.id, detail),
+    );
 
     try {
       run = this.move(run, "planning");
@@ -98,8 +124,10 @@ export class AgentBenchOrchestrator {
       );
       run = this.dependencies.repository.update(run.id, { runPlan: plan });
 
-      workspace = await runWithDeadline("workspace creation", () =>
-        this.dependencies.createWorkspace(run.id),
+      workspace = await acquireWithDeadline(
+        "workspace creation",
+        () => this.dependencies.createWorkspace(run.id),
+        (lateWorkspace) => lateWorkspace.dispose(),
       );
       run = this.move(run, "generating");
       await this.generate(run, {
@@ -109,12 +137,12 @@ export class AgentBenchOrchestrator {
         workspace,
         solariApiKey: this.dependencies.solariApiKey,
         timeoutMs: remainingMs(),
-      }, remainingMs, runWithDeadline);
+      }, remainingMs, runWithCleanupGrace);
       const submission = await runWithDeadline("submission packaging", () =>
         this.dependencies.packageSubmission(workspace!),
       );
 
-      const verification = await runWithDeadline("verification", () =>
+      const verification = await runWithDeadlineSettled("verification", () =>
         this.dependencies.verifier.verify({
           run,
           task,
@@ -123,6 +151,8 @@ export class AgentBenchOrchestrator {
           submission,
           remainingMs,
           runWithDeadline,
+          acquireWithDeadline,
+          runWithCleanupGrace,
           onStage: (stage) => {
             remainingMs();
             run = this.move(this.requireRun(run.id), stage);
@@ -159,7 +189,9 @@ export class AgentBenchOrchestrator {
     } finally {
       if (workspace) {
         try {
-          await workspace.dispose();
+          await runWithCleanupGrace("workspace cleanup", () =>
+            workspace!.dispose(),
+          );
         } catch (error) {
           const detail = redact(
             error instanceof Error ? error.message : String(error),
@@ -318,24 +350,24 @@ export class AgentBenchOrchestrator {
     run: RunRecord,
     input: Parameters<OrchestratorDependencies["generator"]["generate"]>[0],
     remainingMs: () => number,
-    runWithDeadline: <T>(
+    runWithCleanupGrace: <T>(
       label: string,
       operation: () => Promise<T>,
     ) => Promise<T>,
   ): Promise<void> {
     const resources = this.dependencies.generationResources;
     if (!resources) {
-      await runWithDeadline("generation", () =>
-        this.dependencies.generator.generate({
-          ...input,
-          timeoutMs: remainingMs(),
-        }),
-      );
+      await this.dependencies.generator.generate({
+        ...input,
+        timeoutMs: remainingMs(),
+      });
       return;
     }
 
-    const before = await runWithDeadline("pre-generation resource inventory", () =>
-      captureInventory(resources.services),
+    const before = await this.runWithDeadline(
+      "pre-generation resource inventory",
+      remainingMs,
+      () => captureInventory(resources.services),
     );
     let generationEvents: Awaited<
       ReturnType<OrchestratorDependencies["generator"]["generate"]>
@@ -343,12 +375,10 @@ export class AgentBenchOrchestrator {
     let primaryError: unknown;
     try {
       generationEvents = (
-        await runWithDeadline("generation", () =>
-          this.dependencies.generator.generate({
-            ...input,
-            timeoutMs: remainingMs(),
-          }),
-        )
+        await this.dependencies.generator.generate({
+          ...input,
+          timeoutMs: remainingMs(),
+        })
       ).events;
     } catch (error) {
       primaryError = error;
@@ -364,7 +394,7 @@ export class AgentBenchOrchestrator {
 
     let after = before;
     try {
-      after = await runWithDeadline("post-generation resource inventory", () =>
+      after = await runWithCleanupGrace("post-generation resource inventory", () =>
         captureInventory(resources.services),
       );
     } catch (error) {
@@ -388,7 +418,10 @@ export class AgentBenchOrchestrator {
         services: resources.services,
         supervisor,
       });
-      for (const issue of await supervisor.cleanup()) {
+      for (const issue of await runWithCleanupGrace(
+        "generated resource cleanup",
+        () => supervisor.cleanup(),
+      )) {
         this.recordCleanupIssue(run.id, issue.detail);
       }
       if (audit.violations.length > 0 && !primaryError) {
@@ -425,6 +458,103 @@ export class AgentBenchOrchestrator {
           timeout = setTimeout(
             () => reject(new AgentTimeoutError(`Total run deadline exceeded during ${label}`)),
             timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  private async runWithDeadlineSettled<T>(
+    label: string,
+    remainingMs: () => number,
+    cleanupGraceMs: number,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const pending = Promise.resolve().then(operation);
+    try {
+      return await this.runWithDeadline(label, remainingMs, () => pending);
+    } catch (error) {
+      if (error instanceof AgentTimeoutError) {
+        try {
+          await this.runWithCleanupGrace(
+            `${label} settlement`,
+            cleanupGraceMs,
+            () => pending.then(() => undefined, () => undefined),
+          );
+        } catch {
+          // The caller still performs independent inventory and cleanup below.
+        }
+      }
+      throw error;
+    }
+  }
+
+  private async acquireWithDeadline<T>(
+    label: string,
+    remainingMs: () => number,
+    cleanupGraceMs: number,
+    operation: () => Promise<T>,
+    cleanup: (resource: T) => Promise<void>,
+    onCleanupIssue: (detail: string) => void,
+  ): Promise<T> {
+    const pending = Promise.resolve().then(operation);
+    let timedOut = false;
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanupOnce = (resource: T) => {
+      cleanupPromise ??= Promise.resolve().then(() => cleanup(resource));
+      return cleanupPromise;
+    };
+    const lateCleanup = pending.then(
+      async (resource) => {
+        if (!timedOut) return;
+        try {
+          await cleanupOnce(resource);
+        } catch (error) {
+          onCleanupIssue(
+            `late ${label} cleanup: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
+      () => undefined,
+    );
+
+    try {
+      return await this.runWithDeadline(label, remainingMs, () => pending);
+    } catch (error) {
+      if (!(error instanceof AgentTimeoutError)) throw error;
+      timedOut = true;
+      try {
+        await this.runWithCleanupGrace(
+          `late ${label} cleanup`,
+          cleanupGraceMs,
+          () => lateCleanup,
+        );
+      } catch (cleanupError) {
+        onCleanupIssue(
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError),
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async runWithCleanupGrace<T>(
+    label: string,
+    cleanupGraceMs: number,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error(`Cleanup grace expired during ${label}`)),
+            Math.max(1, cleanupGraceMs),
           );
         }),
       ]);

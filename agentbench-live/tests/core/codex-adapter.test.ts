@@ -116,6 +116,10 @@ test("generator attaches only the Solari MCP server", () => {
   });
   expect(spec.args).toContain("--ignore-user-config");
   expect(spec.args.join(" ")).toContain("mcp_servers.solari.command");
+  expect(spec.args).toContain(
+    `mcp_servers.solari.command=${JSON.stringify(process.execPath)}`,
+  );
+  expect(spec.args.join(" ")).toContain("solari-mcp-guard.mjs");
   expect(spec.args.join(" ")).toContain("@solarisdk/mcp@0.4.3");
   expect(spec.args).toContain(
     'mcp_servers.solari.enabled_tools=["solari_sandbox_create","solari_list","solari_kill","solari_connect","solari_exec","solari_run_command_bg","solari_run_code","solari_read_file","solari_write_file","solari_list_files","solari_get_preview_url"]',

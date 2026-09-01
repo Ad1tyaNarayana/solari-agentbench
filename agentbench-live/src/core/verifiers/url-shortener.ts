@@ -85,10 +85,12 @@ export class UrlShortenerVerifier {
 
     try {
       context.onStage("provisioning");
-      sandbox = await context.runWithDeadline("sandbox provisioning", () =>
-        this.services.sandbox.create({
+      sandbox = await context.acquireWithDeadline(
+        "sandbox provisioning",
+        () => this.services.sandbox.create({
           timeoutMs: Math.min(300_000, context.remainingMs()),
         }),
+        (lateSandbox) => lateSandbox.kill(),
       );
       supervisor.trackSandbox(sandbox);
       context.onStage("building");
@@ -131,11 +133,13 @@ export class UrlShortenerVerifier {
       );
 
       context.onStage("verifying");
-      browser = await context.runWithDeadline("browser provisioning", () =>
-        this.services.browser.create({
+      browser = await context.acquireWithDeadline(
+        "browser provisioning",
+        () => this.services.browser.create({
           recording: true,
           stealth: true,
         }),
+        (lateBrowser) => lateBrowser.close(),
       );
       supervisor.trackBrowser(browser);
       const page = await context.runWithDeadline("browser page", () =>
@@ -172,11 +176,13 @@ export class UrlShortenerVerifier {
       if (closeIssue) cleanupIssues.push(closeIssue);
       const browserRecording = await this.pollReplay(context, browser.id);
 
-      desktop = await context.runWithDeadline("desktop provisioning", () =>
-        this.services.desktop.create({
+      desktop = await context.acquireWithDeadline(
+        "desktop provisioning",
+        () => this.services.desktop.create({
           timeoutMs: Math.min(60_000, context.remainingMs()),
           resolution: "1280x720",
         }),
+        (lateDesktop) => lateDesktop.kill(),
       );
       supervisor.trackDesktop(desktop);
       await this.waitForDesktop(context, desktop);
@@ -219,7 +225,9 @@ export class UrlShortenerVerifier {
     } finally {
       if (server) {
         try {
-          await server.kill();
+          await context.runWithCleanupGrace("server process cleanup", () =>
+            server!.kill(),
+          );
         } catch (error) {
           cleanupIssues.push({
             code: "cleanup_failed",
@@ -227,7 +235,17 @@ export class UrlShortenerVerifier {
           });
         }
       }
-      cleanupIssues.push(...(await supervisor.cleanup()));
+      try {
+        cleanupIssues.push(...(await context.runWithCleanupGrace(
+          "verifier resource cleanup",
+          () => supervisor.cleanup(),
+        )));
+      } catch (error) {
+        cleanupIssues.push({
+          code: "cleanup_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
       for (const issue of cleanupIssues) logs.push(issue.detail);
       if (result) result.cleanupIssues = cleanupIssues;
     }

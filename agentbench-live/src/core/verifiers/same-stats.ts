@@ -88,13 +88,15 @@ export class SameStatsVerifier {
 
     try {
       context.onStage("provisioning");
-      const sandbox = await context.runWithDeadline("sandbox provisioning", () =>
-        this.services.sandbox.create({
+      const sandbox = await context.acquireWithDeadline(
+        "sandbox provisioning",
+        () => this.services.sandbox.create({
           timeoutMs: Math.min(
             context.task.budget.sandboxMs,
             context.remainingMs(),
           ),
         }),
+        (lateSandbox) => lateSandbox.kill(),
       );
       supervisor.trackSandbox(sandbox);
       context.onStage("building");
@@ -184,7 +186,17 @@ export class SameStatsVerifier {
         cleanupIssues,
       };
     } finally {
-      cleanupIssues.push(...(await supervisor.cleanup()));
+      try {
+        cleanupIssues.push(...(await context.runWithCleanupGrace(
+          "verifier resource cleanup",
+          () => supervisor.cleanup(),
+        )));
+      } catch (error) {
+        cleanupIssues.push({
+          code: "cleanup_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
       for (const issue of cleanupIssues) logs.push(issue.detail);
       if (result) result.cleanupIssues = cleanupIssues;
     }

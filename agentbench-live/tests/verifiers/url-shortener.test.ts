@@ -103,6 +103,18 @@ function context(submission: SubmissionPackage) {
     remainingMs: () => 1_234,
     runWithDeadline: async <T>(_label: string, operation: () => Promise<T>) =>
       operation(),
+    acquireWithDeadline: async <T>(
+      _label: string,
+      operation: () => Promise<T>,
+      cleanup: (resource: T) => Promise<void>,
+    ) => {
+      void cleanup;
+      return operation();
+    },
+    runWithCleanupGrace: async <T>(
+      _label: string,
+      operation: () => Promise<T>,
+    ) => operation(),
     onStage: (stage: string) => {
       void stage;
     },
