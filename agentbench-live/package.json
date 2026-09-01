@@ -1,0 +1,43 @@
+{
+  "name": "agentbench-live",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "schema:generate": "tsx scripts/generate-run-plan-schema.ts",
+    "agentbench": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@solarisdk/browser": "^0.1.1",
+    "@solarisdk/desktop": "^0.1.2",
+    "@solarisdk/sandbox": "^0.1.2",
+    "better-sqlite3": "^13.0.3",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.5.4",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "jsdom": "^30.0.1",
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
+  },
+  "packageManager": "npm@11.6.0"
+}
