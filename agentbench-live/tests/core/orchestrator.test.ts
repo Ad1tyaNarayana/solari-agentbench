@@ -469,10 +469,15 @@ test("awaits cleanup of a provisioning handle that resolves after the run deadli
 });
 
 test("uses cleanup grace for inventory and teardown after generation exceeds the deadline", async () => {
+  let now = 30_000;
   const harness = createHarness({
-    taskBudgetMs: 20,
-    lateGenerationResourceMs: 50,
-    cleanupGraceMs: 10,
+    taskBudgetMs: 1_000,
+    now: () => now,
+    lateGenerationResourceMs: 1,
+    afterGeneration: () => {
+      now += 1_001;
+    },
+    cleanupGraceMs: 50,
   });
 
   const run = await harness.orchestrator.run({
