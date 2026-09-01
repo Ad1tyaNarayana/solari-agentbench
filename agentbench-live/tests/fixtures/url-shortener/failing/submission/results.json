@@ -1,0 +1,4 @@
+{
+  "passed": true,
+  "note": "A claim without a build must receive no verifier credit."
+}
