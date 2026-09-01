@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { LiveRun } from "@/components/live-run";
 import { StageTimeline } from "@/components/stage-timeline";
+import { demoRuns } from "@/core/demo/seed";
 import { getAgent, getTask } from "@/core/tasks/registry";
 import { getServerContainer } from "@/server/container";
 
@@ -14,7 +15,8 @@ export default async function RunDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const run = getServerContainer().getRun(id);
+  const run =
+    getServerContainer().getRun(id) ?? demoRuns.find((candidate) => candidate.id === id);
   if (!run) notFound();
   const task = getTask(run.taskId);
   const agent = getAgent(run.agentId);

@@ -1,0 +1,200 @@
+[
+  {
+    "id": "demo-sol-url",
+    "taskId": "url-shortener",
+    "taskVersion": "1.0.0",
+    "agentId": "sol-low",
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "low",
+    "stage": "completed",
+    "lastSuccessfulStage": "capturing",
+    "runPlan": {
+      "primitives": [
+        "sandbox",
+        "browser"
+      ],
+      "reason": {
+        "sandbox": "Build and serve the application in an isolated environment.",
+        "browser": "Exercise the form and confirm the redirect target."
+      },
+      "verificationStrategy": "Clean build, recorded browser assertions, and desktop capture."
+    },
+    "score": {
+      "core": 45,
+      "reproducible": 20,
+      "methodology": 15,
+      "evidence": 15,
+      "budget": 5,
+      "total": 100
+    },
+    "evidence": {
+      "sandboxVerified": true,
+      "expectedUrl": "https://example.com/agentbench/verification",
+      "observedUrl": "https://example.com/agentbench/verification",
+      "browserScreenshot": "/demo/url-shortener-browser.png",
+      "desktopScreenshot": "/demo/url-shortener-desktop.png",
+      "demoSeed": true
+    },
+    "sanitizedLogs": [
+      "Clean install and production build succeeded.",
+      "Recorded browser redirect assertion passed.",
+      "Desktop evidence captured."
+    ],
+    "createdAt": "2026-09-01T09:00:00.000Z",
+    "startedAt": "2026-09-01T09:00:01.000Z",
+    "completedAt": "2026-09-01T09:03:43.000Z",
+    "durationMs": 222000
+  },
+  {
+    "id": "demo-sol-stats",
+    "taskId": "same-stats-different-graph",
+    "taskVersion": "1.0.0",
+    "agentId": "sol-low",
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "low",
+    "stage": "completed",
+    "lastSuccessfulStage": "capturing",
+    "runPlan": {
+      "primitives": [
+        "sandbox"
+      ],
+      "reason": {
+        "sandbox": "Run the deterministic numerical reproduction twice."
+      },
+      "verificationStrategy": "Compare output hashes, statistics, and geometric error."
+    },
+    "score": {
+      "core": 40,
+      "reproducible": 20,
+      "methodology": 12,
+      "evidence": 15,
+      "budget": 5,
+      "total": 92
+    },
+    "evidence": {
+      "sandboxVerified": true,
+      "deterministicPoints": true,
+      "expectedStatistics": {
+        "meanX": 54.27,
+        "meanY": 47.84,
+        "varianceX": 280.9,
+        "varianceY": 725.23,
+        "correlation": -0.07
+      },
+      "observedStatistics": {
+        "meanX": 54.28,
+        "meanY": 47.83,
+        "varianceX": 280.88,
+        "varianceY": 725.25,
+        "correlation": -0.069
+      },
+      "circleError": 0.082,
+      "comparisonPlot": "/demo/same-stats-comparison.png",
+      "demoSeed": true
+    },
+    "sanitizedLogs": [
+      "Executed the exact replication CLI twice; output hashes match."
+    ],
+    "createdAt": "2026-09-01T09:05:00.000Z",
+    "startedAt": "2026-09-01T09:05:01.000Z",
+    "completedAt": "2026-09-01T09:07:36.000Z",
+    "durationMs": 155000
+  },
+  {
+    "id": "demo-luna-url",
+    "taskId": "url-shortener",
+    "taskVersion": "1.0.0",
+    "agentId": "luna-high",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "high",
+    "stage": "completed",
+    "lastSuccessfulStage": "capturing",
+    "runPlan": {
+      "primitives": [
+        "sandbox",
+        "browser",
+        "desktop"
+      ],
+      "reason": {
+        "sandbox": "Build from the submitted lockfile.",
+        "browser": "Verify form behavior and redirect semantics.",
+        "desktop": "Inspect the canonical GUI presentation."
+      },
+      "verificationStrategy": "Fresh build plus browser and desktop evidence."
+    },
+    "score": {
+      "core": 45,
+      "reproducible": 20,
+      "methodology": 13,
+      "evidence": 15,
+      "budget": 5,
+      "total": 98
+    },
+    "evidence": {
+      "sandboxVerified": true,
+      "expectedUrl": "https://example.com/agentbench/verification",
+      "observedUrl": "https://example.com/agentbench/verification",
+      "browserScreenshot": "/demo/url-shortener-browser.png",
+      "desktopScreenshot": "/demo/url-shortener-desktop.png",
+      "demoSeed": true
+    },
+    "sanitizedLogs": [
+      "All functional assertions passed in fresh verifier resources."
+    ],
+    "createdAt": "2026-09-01T09:10:00.000Z",
+    "startedAt": "2026-09-01T09:10:01.000Z",
+    "completedAt": "2026-09-01T09:13:13.000Z",
+    "durationMs": 192000
+  },
+  {
+    "id": "demo-luna-stats",
+    "taskId": "same-stats-different-graph",
+    "taskVersion": "1.0.0",
+    "agentId": "luna-high",
+    "model": "gpt-5.6-luna",
+    "reasoningEffort": "high",
+    "stage": "failed",
+    "lastSuccessfulStage": "building",
+    "failureCode": "verification_failed",
+    "failureDetail": "Observed correlation exceeded the published tolerance.",
+    "runPlan": {
+      "primitives": [
+        "sandbox"
+      ],
+      "reason": {
+        "sandbox": "Execute and inspect the numerical reproduction."
+      },
+      "verificationStrategy": "Recompute statistics from generated points."
+    },
+    "score": {
+      "core": 0,
+      "reproducible": 20,
+      "methodology": 15,
+      "evidence": 15,
+      "budget": 5,
+      "total": 55
+    },
+    "evidence": {
+      "sandboxVerified": true,
+      "deterministicPoints": true,
+      "expectedStatistics": {
+        "meanX": 54.27,
+        "correlation": -0.07
+      },
+      "observedStatistics": {
+        "meanX": 54.29,
+        "correlation": 0.12
+      },
+      "comparisonPlot": "/demo/same-stats-comparison.png",
+      "demoSeed": true
+    },
+    "sanitizedLogs": [
+      "Deterministic output confirmed.",
+      "Correlation tolerance check failed."
+    ],
+    "createdAt": "2026-09-01T09:15:00.000Z",
+    "startedAt": "2026-09-01T09:15:01.000Z",
+    "completedAt": "2026-09-01T09:17:21.000Z",
+    "durationMs": 140000
+  }
+]

@@ -1,5 +1,6 @@
 import { RunLauncher } from "@/components/run-launcher";
 import { Scoreboard } from "@/components/scoreboard";
+import { demoRuns } from "@/core/demo/seed";
 import { agents, listTasks } from "@/core/tasks/registry";
 import { getServerContainer } from "@/server/container";
 
@@ -7,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default function Home() {
   const tasks = listTasks();
-  const runs = getServerContainer().listRuns();
+  const persistedRuns = getServerContainer().listRuns();
+  const demoMode = persistedRuns.length === 0;
+  const runs = demoMode ? demoRuns : [...persistedRuns, ...demoRuns];
   const completed = runs.filter((run) => run.stage === "completed").length;
   const evidenceItems = runs.reduce(
     (count, run) => count + Object.keys(run.evidence ?? {}).length,
@@ -40,19 +43,19 @@ export default function Home() {
           </div>
         </div>
         <aside className="hero__proof" aria-label="Benchmark summary">
-          <p>Equal prompt. Equal budget.</p>
+          <p>{demoMode ? "Representative demo matrix" : "Equal prompt. Equal budget."}</p>
           <dl>
             <div><dt>Matrix</dt><dd>{agents.length} × {tasks.length}</dd></div>
             <div><dt>Completed</dt><dd>{completed.toString().padStart(2, "0")}</dd></div>
             <div><dt>Evidence fields</dt><dd>{evidenceItems.toString().padStart(2, "0")}</dd></div>
           </dl>
-          <small>Scores come from observed assertions, reproductions, recordings, screenshots, and logs.</small>
+          <small>{demoMode ? "Seeded DTOs demonstrate the public evidence contract. Launch a run to replace them with local observations." : "Scores come from observed assertions, reproductions, recordings, screenshots, and logs."}</small>
         </aside>
       </section>
 
       <section className="scoreboard-section shell" id="scoreboard">
         <div className="section-heading section-heading--wide">
-          <div><p className="eyebrow">Latest verified matrix</p><h2>Scoreboard</h2></div>
+          <div><p className="eyebrow">{demoMode ? "Seeded public demonstration" : "Latest verified matrix"}</p><h2>Scoreboard</h2></div>
           <p>Each cell links to its complete execution trace. Missing runs stay visibly missing.</p>
         </div>
         <Scoreboard agents={[...agents]} tasks={tasks} runs={runs} />

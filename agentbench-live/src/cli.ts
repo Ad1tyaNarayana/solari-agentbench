@@ -6,6 +6,7 @@ import { CodexPlanner } from "@/core/agents/codex-planner";
 import { runPreflight } from "@/core/agents/preflight";
 import { SpawnCommandRunner } from "@/core/agents/process";
 import type { RunRecord } from "@/core/domain/run";
+import { exportPublicDemo } from "@/core/demo/seed";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
 import { defaultSubmissionPolicy, packageSubmission } from "@/core/security/package-submission";
@@ -84,42 +85,54 @@ function matrixSummary(concurrency: number): string {
 
 export async function runCli(
   argv: string[],
-  runtime: CliRuntime = createDefaultRuntime(),
+  runtime?: CliRuntime,
 ): Promise<void> {
   const parsed = parseArguments(argv);
+  if (parsed.command === "demo:seed") {
+    try {
+      const output = parsed.values.get("output");
+      await exportPublicDemo(typeof output === "string" ? resolve(output) : undefined);
+      (runtime?.writeLine ?? console.log)("Public demo artifacts exported.");
+      return;
+    } finally {
+      await runtime?.dispose();
+    }
+  }
+
+  const activeRuntime = runtime ?? createDefaultRuntime();
   try {
     if (parsed.command === "dry-run") {
-      const report = await runtime.dryRun({
+      const report = await activeRuntime.dryRun({
         taskId: required(parsed.values, "task"),
         agentId: required(parsed.values, "agent"),
       });
-      runtime.writeLine(JSON.stringify(report, null, 2));
+      activeRuntime.writeLine(JSON.stringify(report, null, 2));
       return;
     }
     if (parsed.command === "smoke") {
-      runtime.writeLine(JSON.stringify(await runtime.smoke(), null, 2));
+      activeRuntime.writeLine(JSON.stringify(await activeRuntime.smoke(), null, 2));
       return;
     }
     if (parsed.command === "run") {
-      const run = await runtime.runOne({
+      const run = await activeRuntime.runOne({
         taskId: required(parsed.values, "task"),
         agentId: required(parsed.values, "agent"),
       });
-      runtime.writeLine(JSON.stringify(run, null, 2));
+      activeRuntime.writeLine(JSON.stringify(run, null, 2));
       return;
     }
     if (parsed.command === "matrix") {
       const concurrencyValue = parsed.values.get("concurrency") ?? "1";
       const concurrency = Number(concurrencyValue);
-      runtime.writeLine(matrixSummary(concurrency));
+      activeRuntime.writeLine(matrixSummary(concurrency));
       if (!confirmed(parsed.values)) throw new Error("Matrix confirmation required; pass --yes");
-      const records = await runtime.runMatrix({ concurrency });
-      runtime.writeLine(JSON.stringify(records, null, 2));
+      const records = await activeRuntime.runMatrix({ concurrency });
+      activeRuntime.writeLine(JSON.stringify(records, null, 2));
       return;
     }
-    throw new Error("Usage: agentbench <dry-run|smoke|run|matrix> [options]");
+    throw new Error("Usage: agentbench <dry-run|smoke|run|matrix|demo:seed> [options]");
   } finally {
-    await runtime.dispose();
+    await activeRuntime.dispose();
   }
 }
 

@@ -64,7 +64,11 @@ export function LiveRun({
           ))}
         </ol>
       ) : (
-        <p className="empty-state">Waiting for the next persisted event…</p>
+        <p className="empty-state">
+          {terminalStages.has(stage)
+            ? "Run is terminal; live stream closed."
+            : "Waiting for the next persisted event…"}
+        </p>
       )}
     </section>
   );

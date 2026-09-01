@@ -109,3 +109,10 @@ test("orders live events and closes the stream at a terminal stage", () => {
   ]);
   expect(source.close).toHaveBeenCalledOnce();
 });
+
+test("labels a terminal run as closed instead of waiting for events", () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  render(<LiveRun runId="run-1" initialStage="completed" />);
+  expect(screen.getByText(/live stream closed/i)).toBeInTheDocument();
+  expect(FakeEventSource.instances).toHaveLength(0);
+});

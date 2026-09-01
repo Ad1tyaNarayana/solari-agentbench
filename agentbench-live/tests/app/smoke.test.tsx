@@ -7,4 +7,8 @@ test("renders the AgentBench identity", () => {
     screen.getByRole("heading", { name: "AgentBench Live" }),
   ).toBeInTheDocument();
   expect(screen.getByText(/evidence-first benchmark/i)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /100.*passed/i })).toHaveAttribute(
+    "href",
+    "/runs/demo-sol-url",
+  );
 });
