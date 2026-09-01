@@ -1,4 +1,4 @@
-import type { FailureCode } from "@/core/domain/run";
+import type { CleanupIssue, FailureCode } from "@/core/domain/run";
 import type {
   VerificationContext,
   VerificationResult,
@@ -13,6 +13,7 @@ import type {
 } from "@/core/solari/contracts";
 import { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import { uploadTextTree } from "@/core/solari/upload-tree";
+import { submissionText } from "@/core/security/package-submission";
 
 export class VerificationFailure extends Error {
   constructor(
@@ -42,8 +43,10 @@ function pngDataUrl(bytes: Uint8Array): string {
 }
 
 function methodologicalFidelity(context: VerificationContext): number {
-  const hasMethodology = Boolean(context.submission.entries["methodology.md"]?.trim());
-  const provenance = context.submission.entries["provenance.json"];
+  const hasMethodology = Boolean(
+    submissionText(context.submission, "methodology.md")?.trim(),
+  );
+  const provenance = submissionText(context.submission, "provenance.json");
   if (!hasMethodology || !provenance) return 0;
   try {
     JSON.parse(provenance);
@@ -71,7 +74,6 @@ export class UrlShortenerVerifier {
   async verify(
     context: VerificationContext,
   ): Promise<UrlShortenerVerificationResult> {
-    const startedAt = Date.now();
     const supervisor = new ResourceSupervisor();
     const logs: string[] = [];
     let sandbox: SandboxHandle | undefined;
@@ -79,19 +81,30 @@ export class UrlShortenerVerifier {
     let desktop: DesktopHandle | undefined;
     let server: SandboxProcess | undefined;
     let result: UrlShortenerVerificationResult | undefined;
+    const cleanupIssues: CleanupIssue[] = [];
 
     try {
-      sandbox = await this.services.sandbox.create({ timeoutMs: 300_000 });
+      context.onStage("provisioning");
+      sandbox = await context.runWithDeadline("sandbox provisioning", () =>
+        this.services.sandbox.create({
+          timeoutMs: Math.min(300_000, context.remainingMs()),
+        }),
+      );
       supervisor.trackSandbox(sandbox);
-      await uploadTextTree(sandbox, context.submission, "/work/submission");
+      context.onStage("building");
+      await context.runWithDeadline("submission upload", () =>
+        uploadTextTree(sandbox!, context.submission, "/work/submission"),
+      );
 
       await this.requireCommand(
+        context,
         sandbox,
         "npm",
         ["ci"],
         "/work/submission/source",
       );
       await this.requireCommand(
+        context,
         sandbox,
         "npm",
         ["run", "build"],
@@ -99,31 +112,46 @@ export class UrlShortenerVerifier {
       );
       logs.push("Clean install and production build succeeded.");
 
-      server = await sandbox.start(
-        "npm",
-        [
-          "start",
-          "--",
-          "--hostname",
-          "0.0.0.0",
-          "--port",
-          "3000",
-        ],
-        { cwd: "/work/submission/source" },
+      server = await context.runWithDeadline("application start", () =>
+        sandbox!.start(
+          "npm",
+          [
+            "start",
+            "--",
+            "--hostname",
+            "0.0.0.0",
+            "--port",
+            "3000",
+          ],
+          { cwd: "/work/submission/source" },
+        ),
       );
-      const preview = await sandbox.previewUrl(3000);
+      const preview = await context.runWithDeadline("preview URL", () =>
+        sandbox!.previewUrl(3000),
+      );
 
-      browser = await this.services.browser.create({
-        recording: true,
-        stealth: true,
-      });
+      context.onStage("verifying");
+      browser = await context.runWithDeadline("browser provisioning", () =>
+        this.services.browser.create({
+          recording: true,
+          stealth: true,
+        }),
+      );
       supervisor.trackBrowser(browser);
-      const page = await browser.newPage();
+      const page = await context.runWithDeadline("browser page", () =>
+        browser!.newPage(),
+      );
       const expectedUrl = `https://example.com/agentbench/verification?nonce=${encodeURIComponent(context.run.id)}`;
-      await page.goto(preview.url);
-      await page.fill("#long-url", expectedUrl);
-      await page.click("#shorten");
-      const shortValue = (await page.textContent("#short-url"))?.trim();
+      await context.runWithDeadline("browser navigation", () => page.goto(preview.url));
+      await context.runWithDeadline("URL input", () =>
+        page.fill("#long-url", expectedUrl),
+      );
+      await context.runWithDeadline("shorten action", () => page.click("#shorten"));
+      const shortValue = (
+        await context.runWithDeadline("short URL observation", () =>
+          page.textContent("#short-url"),
+        )
+      )?.trim();
       if (!shortValue) {
         throw new VerificationFailure(
           "verification_failed",
@@ -131,22 +159,36 @@ export class UrlShortenerVerifier {
         );
       }
       const shortUrl = new URL(shortValue, preview.url).toString();
-      await page.goto(shortUrl);
-      await page.waitForUrl(expectedUrl, 30_000);
+      await context.runWithDeadline("short URL navigation", () => page.goto(shortUrl));
+      await context.runWithDeadline("redirect assertion", () =>
+        page.waitForUrl(expectedUrl, Math.min(30_000, context.remainingMs())),
+      );
       const observedUrl = page.url();
-      const browserScreenshot = pngDataUrl(await page.screenshot());
-      await browser.close();
-      const browserRecording = await this.pollReplay(browser.id);
+      context.onStage("capturing");
+      const browserScreenshot = pngDataUrl(
+        await context.runWithDeadline("browser screenshot", () => page.screenshot()),
+      );
+      const closeIssue = await supervisor.closeBrowser(browser.id);
+      if (closeIssue) cleanupIssues.push(closeIssue);
+      const browserRecording = await this.pollReplay(context, browser.id);
 
-      desktop = await this.services.desktop.create({
-        timeoutMs: 60_000,
-        resolution: "1280x720",
-      });
+      desktop = await context.runWithDeadline("desktop provisioning", () =>
+        this.services.desktop.create({
+          timeoutMs: Math.min(60_000, context.remainingMs()),
+          resolution: "1280x720",
+        }),
+      );
       supervisor.trackDesktop(desktop);
-      await this.waitForDesktop(desktop);
-      await desktop.open("google-chrome", [preview.url]);
-      await this.sleep(1_000);
-      const desktopScreenshot = pngDataUrl(await desktop.screenshot());
+      await this.waitForDesktop(context, desktop);
+      await context.runWithDeadline("desktop browser launch", () =>
+        desktop!.open("google-chrome", [preview.url]),
+      );
+      await context.runWithDeadline("desktop rendering", () => this.sleep(1_000));
+      const desktopScreenshot = pngDataUrl(
+        await context.runWithDeadline("desktop screenshot", () =>
+          desktop!.screenshot(),
+        ),
+      );
 
       const passed = observedUrl === expectedUrl;
       const evidenceCount = [
@@ -161,7 +203,7 @@ export class UrlShortenerVerifier {
           reproducible: true,
           methodology: methodologicalFidelity(context),
           evidence: (evidenceCount / 3) * 15,
-          withinBudget: Date.now() - startedAt <= context.task.budget.totalMs,
+          withinBudget: true,
         }),
         evidence: {
           sandboxVerified: true,
@@ -172,37 +214,40 @@ export class UrlShortenerVerifier {
           observedUrl,
         },
         logs,
+        cleanupIssues,
       };
     } finally {
       if (server) {
         try {
           await server.kill();
         } catch (error) {
-          logs.push(
-            `Server cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          cleanupIssues.push({
+            code: "cleanup_failed",
+            detail: `server process: ${error instanceof Error ? error.message : String(error)}`,
+          });
         }
       }
-      const cleanupIssues = await supervisor.cleanup();
+      cleanupIssues.push(...(await supervisor.cleanup()));
       for (const issue of cleanupIssues) logs.push(issue.detail);
-      if (result && cleanupIssues.length > 0) {
-        result.evidence.cleanupIssues = cleanupIssues;
-      }
+      if (result) result.cleanupIssues = cleanupIssues;
     }
 
     return result as UrlShortenerVerificationResult;
   }
 
   private async requireCommand(
+    context: VerificationContext,
     sandbox: SandboxHandle,
     command: string,
     args: string[],
     cwd: string,
   ): Promise<void> {
-    const execution = await sandbox.exec(command, args, {
-      cwd,
-      timeoutMs: 120_000,
-    });
+    const execution = await context.runWithDeadline(`${command} ${args.join(" ")}`, () =>
+      sandbox.exec(command, args, {
+        cwd,
+        timeoutMs: Math.min(120_000, context.remainingMs()),
+      }),
+    );
     if (execution.exitCode !== 0) {
       throw new VerificationFailure(
         "build_failed",
@@ -211,22 +256,40 @@ export class UrlShortenerVerifier {
     }
   }
 
-  private async pollReplay(id: string): Promise<string | undefined> {
+  private async pollReplay(
+    context: VerificationContext,
+    id: string,
+  ): Promise<string | undefined> {
     for (let attempt = 0; attempt < this.replayAttempts; attempt += 1) {
       try {
-        return (await this.services.browser.getReplayUrl(id)).url;
+        return (
+          await context.runWithDeadline("browser replay", () =>
+            this.services.browser.getReplayUrl(id),
+          )
+        ).url;
       } catch {
-        if (attempt + 1 < this.replayAttempts) await this.sleep(3_000);
+        if (attempt + 1 < this.replayAttempts) {
+          await context.runWithDeadline("browser replay retry", () =>
+            this.sleep(Math.min(3_000, context.remainingMs())),
+          );
+        }
       }
     }
     return undefined;
   }
 
-  private async waitForDesktop(desktop: DesktopHandle): Promise<void> {
+  private async waitForDesktop(
+    context: VerificationContext,
+    desktop: DesktopHandle,
+  ): Promise<void> {
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      const health = await desktop.health();
+      const health = await context.runWithDeadline("desktop health", () =>
+        desktop.health(),
+      );
       if (health.ready && health.display && health.vnc) return;
-      await this.sleep(1_000);
+      await context.runWithDeadline("desktop health retry", () =>
+        this.sleep(Math.min(1_000, context.remainingMs())),
+      );
     }
     throw new VerificationFailure(
       "evidence_failed",

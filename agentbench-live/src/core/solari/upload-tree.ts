@@ -48,9 +48,10 @@ export async function uploadTextTree(
     await sandbox.mkdir(directory);
   }
   for (const relativePath of files) {
+    const entry = submission.entries[relativePath];
     await sandbox.writeFile(
       posix.join(root, relativePath),
-      submission.entries[relativePath],
+      entry.contents,
     );
   }
 }

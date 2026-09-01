@@ -13,11 +13,14 @@ import type { TaskManifest } from "@/core/domain/task";
 import { redact } from "@/core/security/redact";
 import type { DisposableWorkspace } from "@/core/security/workspace";
 import {
+  auditGeneratedResources,
   captureInventory,
   ResourceSupervisor,
   trackGeneratedResources,
 } from "@/core/solari/resource-supervisor";
 import { transition } from "./state-machine";
+import { applyBudgetOutcome } from "./scoring";
+import type { ScoreBreakdown } from "./scoring";
 import type {
   DryRunReport,
   OrchestratorDependencies,
@@ -30,7 +33,14 @@ export class AgentBenchOrchestrator {
   async dryRun(request: RunRequest): Promise<DryRunReport> {
     const task = this.dependencies.getTask(request.taskId);
     const agent = this.dependencies.getAgent(request.agentId);
-    const plan = await this.plan(`dry-${Date.now()}`, task, agent);
+    const now = this.dependencies.now ?? Date.now;
+    const deadlineAt = now() + task.budget.totalMs;
+    const remainingMs = () => this.remainingMs(deadlineAt, now);
+    const plan = await this.runWithDeadline(
+      "planning",
+      remainingMs,
+      () => this.plan(`dry-${now()}`, task, agent, remainingMs),
+    );
     return {
       taskId: task.id,
       agentId: agent.id,
@@ -69,16 +79,28 @@ export class AgentBenchOrchestrator {
     ) {
       throw new Error(`Run ${id} is not the matching queued run`);
     }
-    const startedAt = new Date().toISOString();
+    const now = this.dependencies.now ?? Date.now;
+    const startedMs = now();
+    const deadlineAt = startedMs + task.budget.totalMs;
+    const startedAt = new Date(startedMs).toISOString();
+    const remainingMs = () => this.remainingMs(deadlineAt, now);
+    const runWithDeadline = <T>(
+      label: string,
+      operation: () => Promise<T>,
+    ) => this.runWithDeadline(label, remainingMs, operation);
     let run = this.dependencies.repository.update(created.id, { startedAt });
     let workspace: DisposableWorkspace | undefined;
 
     try {
       run = this.move(run, "planning");
-      const plan = await this.plan(run.id, task, agent);
+      const plan = await runWithDeadline("planning", () =>
+        this.plan(run.id, task, agent, remainingMs),
+      );
       run = this.dependencies.repository.update(run.id, { runPlan: plan });
 
-      workspace = await this.dependencies.createWorkspace(run.id);
+      workspace = await runWithDeadline("workspace creation", () =>
+        this.dependencies.createWorkspace(run.id),
+      );
       run = this.move(run, "generating");
       await this.generate(run, {
         agent,
@@ -86,34 +108,54 @@ export class AgentBenchOrchestrator {
         taskPrompt: task.prompt,
         workspace,
         solariApiKey: this.dependencies.solariApiKey,
-        timeoutMs: task.budget.totalMs,
-      });
-      const submission = await this.dependencies.packageSubmission(workspace);
+        timeoutMs: remainingMs(),
+      }, remainingMs, runWithDeadline);
+      const submission = await runWithDeadline("submission packaging", () =>
+        this.dependencies.packageSubmission(workspace!),
+      );
 
-      run = this.move(run, "provisioning");
-      run = this.move(run, "building");
-      run = this.move(run, "verifying");
-      const verification = await this.dependencies.verifier.verify({
-        run,
-        task,
-        agent,
-        plan,
-        submission,
-      });
-      run = this.move(run, "capturing");
+      const verification = await runWithDeadline("verification", () =>
+        this.dependencies.verifier.verify({
+          run,
+          task,
+          agent,
+          plan,
+          submission,
+          remainingMs,
+          runWithDeadline,
+          onStage: (stage) => {
+            remainingMs();
+            run = this.move(this.requireRun(run.id), stage);
+          },
+        }),
+      );
+      if (run.stage !== "verifying" && run.stage !== "capturing") {
+        throw new Error(
+          `Verifier ended before reporting real work stages (last stage: ${run.stage})`,
+        );
+      }
+      for (const issue of verification.cleanupIssues ?? []) {
+        this.recordCleanupIssue(run.id, issue.detail);
+      }
+      run = this.requireRun(run.id);
+      const durationMs = now() - startedMs;
+      remainingMs();
       run = this.dependencies.repository.update(run.id, {
-        score: { ...verification.score },
+        score: applyBudgetOutcome(
+          verification.score,
+          durationMs <= task.budget.totalMs,
+        ),
         evidence: verification.evidence,
         sanitizedLogs: verification.logs.map((line) =>
           redact(line, { localRoots: workspace ? [workspace.root] : [] }),
         ),
       });
       run = this.move(run, "completed", {
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - Date.parse(startedAt),
+        completedAt: new Date(now()).toISOString(),
+        durationMs,
       });
     } catch (error) {
-      run = this.fail(run, error, workspace);
+      run = this.fail(run, error, workspace, now() - startedMs, now);
     } finally {
       if (workspace) {
         try {
@@ -139,13 +181,27 @@ export class AgentBenchOrchestrator {
       }
     }
 
-    return this.requireRun(run.id);
+    const finishedAtMs = now();
+    const totalDurationMs = finishedAtMs - startedMs;
+    const current = this.requireRun(run.id);
+    run = this.dependencies.repository.update(run.id, {
+      completedAt: new Date(finishedAtMs).toISOString(),
+      durationMs: totalDurationMs,
+      score: current.score
+        ? applyBudgetOutcome(
+            current.score as ScoreBreakdown,
+            totalDurationMs <= task.budget.totalMs,
+          )
+        : undefined,
+    });
+    return run;
   }
 
   private async plan(
     runId: string,
     task: TaskManifest,
     agent: AgentConfig,
+    remainingMs: () => number,
   ): Promise<RunPlan> {
     const temporaryRoot = await realpath(tmpdir());
     const directory = await mkdtemp(join(temporaryRoot, "agentbench-plan-"));
@@ -161,7 +217,7 @@ export class AgentBenchOrchestrator {
           `Required verifier evidence: ${task.requiredEvidence.join(", ")}.`,
           "Explain every selected primitive and state the verification strategy.",
         ].join("\n"),
-        timeoutMs: Math.min(task.budget.totalMs, 120_000),
+        timeoutMs: Math.min(remainingMs(), 120_000),
       });
     } finally {
       const resolved = await realpath(directory);
@@ -198,6 +254,8 @@ export class AgentBenchOrchestrator {
     run: RunRecord,
     error: unknown,
     workspace?: DisposableWorkspace,
+    durationMs?: number,
+    now: () => number = Date.now,
   ): RunRecord {
     const detail = redact(error instanceof Error ? error.message : String(error), {
       localRoots: workspace ? [workspace.root] : [],
@@ -207,7 +265,8 @@ export class AgentBenchOrchestrator {
       stage: transition(run.stage, "failed"),
       failureCode,
       failureDetail: detail,
-      completedAt: new Date().toISOString(),
+      completedAt: new Date(now()).toISOString(),
+      durationMs,
     });
     const event = this.dependencies.repository.appendEvent(run.id, {
       kind: "stage",
@@ -258,26 +317,69 @@ export class AgentBenchOrchestrator {
   private async generate(
     run: RunRecord,
     input: Parameters<OrchestratorDependencies["generator"]["generate"]>[0],
+    remainingMs: () => number,
+    runWithDeadline: <T>(
+      label: string,
+      operation: () => Promise<T>,
+    ) => Promise<T>,
   ): Promise<void> {
     const resources = this.dependencies.generationResources;
     if (!resources) {
-      await this.dependencies.generator.generate(input);
+      await runWithDeadline("generation", () =>
+        this.dependencies.generator.generate({
+          ...input,
+          timeoutMs: remainingMs(),
+        }),
+      );
       return;
     }
 
-    const before = await captureInventory(resources.services);
+    const before = await runWithDeadline("pre-generation resource inventory", () =>
+      captureInventory(resources.services),
+    );
     let generationEvents: Awaited<
       ReturnType<OrchestratorDependencies["generator"]["generate"]>
     >["events"] = [];
     let primaryError: unknown;
     try {
-      generationEvents = (await this.dependencies.generator.generate(input)).events;
+      generationEvents = (
+        await runWithDeadline("generation", () =>
+          this.dependencies.generator.generate({
+            ...input,
+            timeoutMs: remainingMs(),
+          }),
+        )
+      ).events;
     } catch (error) {
       primaryError = error;
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "events" in error &&
+        Array.isArray(error.events)
+      ) {
+        generationEvents = error.events;
+      }
+    }
+
+    let after = before;
+    try {
+      after = await runWithDeadline("post-generation resource inventory", () =>
+        captureInventory(resources.services),
+      );
+    } catch (error) {
+      const detail = `generation resource inventory: ${error instanceof Error ? error.message : String(error)}`;
+      this.recordCleanupIssue(run.id, detail);
+      primaryError ??= new AgentProcessError(detail);
     }
 
     try {
-      const after = await captureInventory(resources.services);
+      const audit = auditGeneratedResources({
+        approvedPrimitives: input.plan.primitives,
+        before,
+        after,
+        events: generationEvents,
+      });
       const supervisor = new ResourceSupervisor();
       trackGeneratedResources({
         before,
@@ -289,13 +391,46 @@ export class AgentBenchOrchestrator {
       for (const issue of await supervisor.cleanup()) {
         this.recordCleanupIssue(run.id, issue.detail);
       }
+      if (audit.violations.length > 0 && !primaryError) {
+        primaryError = new AgentProcessError(audit.violations.join("; "));
+      }
     } catch (error) {
-      const detail = `generation resource inventory: ${error instanceof Error ? error.message : String(error)}`;
+      const detail = `generation resource cleanup: ${error instanceof Error ? error.message : String(error)}`;
       this.recordCleanupIssue(run.id, detail);
-      if (!primaryError) primaryError = new AgentProcessError(detail);
+      primaryError ??= new AgentProcessError(detail);
     }
 
     if (primaryError) throw primaryError;
+  }
+
+  private remainingMs(deadlineAt: number, now: () => number): number {
+    const remaining = Math.ceil(deadlineAt - now());
+    if (remaining <= 0) {
+      throw new AgentTimeoutError("Total run deadline exceeded");
+    }
+    return remaining;
+  }
+
+  private async runWithDeadline<T>(
+    label: string,
+    remainingMs: () => number,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const timeoutMs = remainingMs();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new AgentTimeoutError(`Total run deadline exceeded during ${label}`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   private recordCleanupIssue(runId: string, detail: string): void {

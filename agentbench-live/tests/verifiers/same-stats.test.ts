@@ -56,8 +56,14 @@ test("circle error is lower for points near the target circumference", () => {
 
 test("independently accepts deterministic statistics, shape, and PNG evidence", async () => {
   const services = createSameStatsServices();
+  const context = verifierContext(fixturePackage());
+  context.onStage = (
+    stage: "provisioning" | "building" | "verifying" | "capturing",
+  ) => {
+    services.state.stages.push(stage);
+  };
   const result = await new SameStatsVerifier(services).verify(
-    verifierContext(fixturePackage()),
+    context,
   );
   expect(result.findings).toMatchObject({
     statisticsPassed: true,
@@ -67,6 +73,13 @@ test("independently accepts deterministic statistics, shape, and PNG evidence", 
   expect(result.score.total).toBe(100);
   expect(result.evidence.comparisonPlot).toMatch(/^data:image\/png;base64,/);
   expect(services.state.sandboxKilled).toBe(true);
+  expect(services.state.sandboxKillCalls).toBe(1);
+  expect(services.state.stages).toEqual([
+    "provisioning",
+    "building",
+    "verifying",
+    "capturing",
+  ]);
 });
 
 test("a byte-different rerun fails the reproducibility prerequisite", async () => {
@@ -91,12 +104,17 @@ function parsePoints(csv: string) {
 
 function fixturePackage(): SubmissionPackage {
   const root = resolve("tests/fixtures/same-stats/passing/submission");
-  const entries: Record<string, string> = {};
+  const entries: SubmissionPackage["entries"] = {};
   const visit = (directory: string) => {
     for (const name of readdirSync(directory)) {
       const path = resolve(directory, name);
       if (statSync(path).isDirectory()) visit(path);
-      else entries[relative(root, path).replaceAll("\\", "/")] = readFileSync(path, "utf8");
+      else {
+        entries[relative(root, path).replaceAll("\\", "/")] = {
+          kind: "text",
+          contents: readFileSync(path, "utf8"),
+        };
+      }
     }
   };
   visit(root);
@@ -124,14 +142,32 @@ function verifierContext(submission: SubmissionPackage) {
     reason: { sandbox: "reproduce findings" },
     verificationStrategy: "recompute metrics",
   };
-  return { run, task: sameStatsTask, agent, plan, submission };
+  return {
+    run,
+    task: sameStatsTask,
+    agent,
+    plan,
+    submission,
+    remainingMs: () => 1_234,
+    runWithDeadline: async <T>(_label: string, operation: () => Promise<T>) =>
+      operation(),
+    onStage: (
+      stage: "provisioning" | "building" | "verifying" | "capturing",
+    ): void => {
+      void stage;
+    },
+  };
 }
 
 function createSameStatsServices(options: { nondeterministic?: boolean } = {}): {
   sandbox: SandboxService;
-  state: { sandboxKilled: boolean };
+  state: {
+    sandboxKilled: boolean;
+    sandboxKillCalls: number;
+    stages: string[];
+  };
 } {
-  const state = { sandboxKilled: false };
+  const state = { sandboxKilled: false, sandboxKillCalls: 0, stages: [] as string[] };
   const points = readFileSync(resolve("tests/fixtures/same-stats/seed.csv"));
   const files = new Map<string, Uint8Array>([
     ["/work/output-1/points.csv", points],
@@ -175,6 +211,7 @@ function createSameStatsServices(options: { nondeterministic?: boolean } = {}): 
     },
     async kill() {
       state.sandboxKilled = true;
+      state.sandboxKillCalls += 1;
     },
   };
   const sandbox: SandboxService = {

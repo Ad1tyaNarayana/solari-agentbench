@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { RunPlan } from "@/core/domain/plan";
 import type { AgentConfig } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
 import {
   CodexGenerator,
   buildGeneratorCommand,
+  solariToolsForPrimitives,
 } from "@/core/agents/codex-generator";
 import { parseJsonl } from "@/core/agents/jsonl";
 import { CodexPlanner, PlanInvalidError } from "@/core/agents/codex-planner";
@@ -115,9 +116,88 @@ test("generator attaches only the Solari MCP server", () => {
   });
   expect(spec.args).toContain("--ignore-user-config");
   expect(spec.args.join(" ")).toContain("mcp_servers.solari.command");
-  expect(spec.args.join(" ")).toContain("@solarisdk/mcp");
+  expect(spec.args.join(" ")).toContain("@solarisdk/mcp@0.4.3");
+  expect(spec.args).toContain(
+    'mcp_servers.solari.enabled_tools=["solari_sandbox_create","solari_list","solari_kill","solari_connect","solari_exec","solari_run_command_bg","solari_run_code","solari_read_file","solari_write_file","solari_list_files","solari_get_preview_url"]',
+  );
   expect(spec.args.join(" ")).not.toContain("test-solari-key");
   expect(spec.env?.SOLARI_API_KEY).toBe("test-solari-key");
+});
+
+test("uses exact MCP v0.4.3 tool allowlists for each approved primitive", () => {
+  expect(solariToolsForPrimitives(["browser"])).toEqual([
+    "solari_browser_create",
+    "solari_browser_profiles",
+    "solari_browser_autologin_status",
+    "solari_browser_autologin_site",
+    "solari_browser_login",
+    "solari_browser_save_profile",
+    "solari_browser_await_login",
+    "solari_browser_navigate",
+    "solari_browser_read_page",
+    "solari_browser_screenshot",
+    "solari_browser_click",
+    "solari_browser_type",
+    "solari_browser_key",
+    "solari_browser_evaluate",
+    "solari_browser_replay_url",
+    "solari_browser_close",
+  ]);
+  expect(solariToolsForPrimitives(["sandbox"])).toEqual([
+    "solari_sandbox_create",
+    "solari_list",
+    "solari_kill",
+    "solari_connect",
+    "solari_exec",
+    "solari_run_command_bg",
+    "solari_run_code",
+    "solari_read_file",
+    "solari_write_file",
+    "solari_list_files",
+    "solari_get_preview_url",
+  ]);
+  expect(solariToolsForPrimitives(["desktop"])).toEqual([
+    "solari_desktop_create",
+    "solari_list",
+    "solari_kill",
+    "solari_connect",
+    "solari_exec",
+    "solari_run_command_bg",
+    "solari_run_code",
+    "solari_read_file",
+    "solari_write_file",
+    "solari_list_files",
+    "solari_get_preview_url",
+    "solari_screenshot",
+    "solari_click",
+    "solari_type",
+    "solari_key",
+    "solari_open_app",
+  ]);
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+test("planner and generator child environments exclude unrelated secrets", async () => {
+  vi.stubEnv("UNRELATED_DEPLOY_SECRET", "must-not-cross-process-boundary");
+  vi.stubEnv("SOLARI_API_KEY", "ambient-solari-key");
+  const runner = new FakeCommandRunner([
+    result({ outputFile: JSON.stringify(validPlan) }),
+  ]);
+  await new CodexPlanner(runner).plan(plannerInput);
+  expect(runner.calls[0].env?.UNRELATED_DEPLOY_SECRET).toBeUndefined();
+  expect(runner.calls[0].env?.SOLARI_API_KEY).toBeUndefined();
+
+  const generation = buildGeneratorCommand({
+    agent,
+    plan: validPlan,
+    taskPrompt: task.prompt,
+    workspace: { root: "C:\\temp\\workspace" },
+    solariApiKey: "explicit-solari-key",
+    timeoutMs: 5_000,
+  });
+  expect(generation.env?.UNRELATED_DEPLOY_SECRET).toBeUndefined();
+  expect(generation.env?.SOLARI_API_KEY).toBe("explicit-solari-key");
 });
 
 test("generator returns structured events from the process boundary", async () => {
@@ -149,6 +229,17 @@ test("JSONL parsing redacts secrets before returning events", () => {
   expect(JSON.stringify(events)).not.toContain("slr_live_id_secret");
 });
 
+test("JSONL redaction preserves object delimiters around signed URLs", () => {
+  const [event] = parseJsonl(
+    '{"type":"log","url":"https://stream.getsolari.com/signed?token=secret","after":true}',
+  );
+  expect(event).toEqual({
+    type: "log",
+    url: "[REDACTED_SOLARI_URL]",
+    after: true,
+  });
+});
+
 test("spawn runner reports a timed out process", async () => {
   const runner = new SpawnCommandRunner();
   const command = await runner.run({
@@ -158,6 +249,25 @@ test("spawn runner reports a timed out process", async () => {
   });
   expect(command.timedOut).toBe(true);
 });
+
+test.skipIf(process.platform === "win32")(
+  "Unix timeout escalates from SIGTERM to SIGKILL for a resistant child",
+  async () => {
+    const runner = new SpawnCommandRunner();
+    const startedAt = Date.now();
+    const command = await runner.run({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)",
+      ],
+      timeoutMs: 50,
+      terminationGraceMs: 50,
+    });
+    expect(command.timedOut).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  },
+);
 
 test("preflight fails without exposing or invoking a missing Solari key", async () => {
   const runner = new FakeCommandRunner([]);

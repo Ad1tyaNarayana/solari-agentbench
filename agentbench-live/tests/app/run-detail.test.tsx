@@ -61,6 +61,25 @@ test("keeps canonical screenshots visible when a replay has expired", () => {
   expect(screen.getByRole("img", { name: /desktop evidence/i })).toBeInTheDocument();
 });
 
+test("synthetic evidence is labeled as illustrative rather than verifier-owned", () => {
+  render(
+    <EvidencePanel
+      run={{
+        ...researchRun,
+        provenance: {
+          kind: "synthetic-demo",
+          label: "Synthetic demo — not live verification",
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByText(/synthetic demo.*not live verification/i),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/verifier-owned output/i)).not.toBeInTheDocument();
+});
+
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();

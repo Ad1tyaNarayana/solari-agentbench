@@ -1,3 +1,5 @@
+import "server-only";
+
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { CodexGenerator } from "@/core/agents/codex-generator";
@@ -22,6 +24,11 @@ import {
   type RunApiPort,
   type RunSubmission,
 } from "./contracts";
+import {
+  getOrCreateGlobalServerContainer,
+  persistDetachedQueueFailure,
+  reconcileAbandonedRuns,
+} from "./recovery";
 
 function selectionError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -42,6 +49,7 @@ export function createServerContainer(): RunApiPort {
   );
   mkdirSync(dirname(databasePath), { recursive: true });
   const repository = new SqliteRunRepository(databasePath);
+  reconcileAbandonedRuns(repository);
   const events = new RunEventBus();
   const runner = new SpawnCommandRunner();
   const queue = new RunQueue(1);
@@ -94,10 +102,16 @@ export function createServerContainer(): RunApiPort {
 
     const activeOrchestrator = executionOrchestrator();
     const run = activeOrchestrator.create(request);
-    void queue.enqueue(() => activeOrchestrator.runCreated(run.id, request)).catch(() => {
-      // The orchestrator persists execution failures. This catch prevents an
-      // intentionally detached background job from becoming an unhandled promise.
-    });
+    void queue
+      .enqueue(() => activeOrchestrator.runCreated(run.id, request))
+      .catch((error) => {
+        persistDetachedQueueFailure({
+          repository,
+          events,
+          runId: run.id,
+          error,
+        });
+      });
     return { kind: "run", run };
   }
 
@@ -110,9 +124,9 @@ export function createServerContainer(): RunApiPort {
   };
 }
 
-let singleton: RunApiPort | undefined;
-
 export function getServerContainer(): RunApiPort {
-  singleton ??= createServerContainer();
-  return singleton;
+  return getOrCreateGlobalServerContainer(
+    "agentbench-live-server-container-v1",
+    createServerContainer,
+  );
 }

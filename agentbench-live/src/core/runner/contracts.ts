@@ -1,7 +1,7 @@
 import type { GeneratorInput, GenerationResult } from "@/core/agents/codex-generator";
 import type { PlannerInput } from "@/core/agents/codex-planner";
 import type { RunPlan } from "@/core/domain/plan";
-import type { AgentConfig, RunRecord } from "@/core/domain/run";
+import type { AgentConfig, CleanupIssue, RunRecord } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
 import type { RunEventBus } from "@/core/events/run-events";
 import type { RunRepository } from "@/core/persistence/repository";
@@ -35,12 +35,18 @@ export type VerificationContext = {
   agent: AgentConfig;
   plan: RunPlan;
   submission: SubmissionPackage;
+  remainingMs(): number;
+  runWithDeadline<T>(label: string, operation: () => Promise<T>): Promise<T>;
+  onStage(
+    stage: "provisioning" | "building" | "verifying" | "capturing",
+  ): void;
 };
 
 export type VerificationResult = {
   score: ScoreBreakdown;
   evidence: Record<string, unknown>;
   logs: string[];
+  cleanupIssues?: CleanupIssue[];
 };
 
 export interface VerifierRegistryPort {
@@ -62,4 +68,5 @@ export type OrchestratorDependencies = {
   schemaPath: string;
   solariApiKey: string;
   generationResources?: { services: SolariServices };
+  now?: () => number;
 };

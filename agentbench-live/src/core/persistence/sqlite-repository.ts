@@ -86,6 +86,8 @@ export class SqliteRunRepository implements RunRepository {
 
   constructor(path: string) {
     this.database = new Database(path);
+    this.database.pragma("busy_timeout = 5000");
+    if (path !== ":memory:") this.database.pragma("journal_mode = WAL");
     this.database.exec(
       readFileSync(resolve("src/core/persistence/schema.sql"), "utf8"),
     );
@@ -130,33 +132,40 @@ export class SqliteRunRepository implements RunRepository {
   }
 
   appendEvent(runId: string, input: AppendRunEventInput): RunEvent {
-    if (!this.get(runId)) throw new Error(`Unknown run: ${runId}`);
-    const sequence = (
-      this.database
-        .prepare(
-          "SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence FROM run_events WHERE run_id = ?",
-        )
-        .get(runId) as { sequence: number }
-    ).sequence;
-    const event: RunEvent = {
-      runId,
-      sequence,
-      kind: input.kind,
-      payload: input.payload,
-      createdAt: new Date().toISOString(),
-    };
-    this.database
-      .prepare(
-        "INSERT INTO run_events (run_id, sequence, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
-      )
-      .run(
-        event.runId,
-        event.sequence,
-        event.kind,
-        JSON.stringify(event.payload),
-        event.createdAt,
-      );
-    return event;
+    const append = this.database.transaction(
+      (activeRunId: string, eventInput: AppendRunEventInput): RunEvent => {
+        if (!this.get(activeRunId)) {
+          throw new Error(`Unknown run: ${activeRunId}`);
+        }
+        const sequence = (
+          this.database
+            .prepare(
+              "SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence FROM run_events WHERE run_id = ?",
+            )
+            .get(activeRunId) as { sequence: number }
+        ).sequence;
+        const event: RunEvent = {
+          runId: activeRunId,
+          sequence,
+          kind: eventInput.kind,
+          payload: eventInput.payload,
+          createdAt: new Date().toISOString(),
+        };
+        this.database
+          .prepare(
+            "INSERT INTO run_events (run_id, sequence, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+          )
+          .run(
+            event.runId,
+            event.sequence,
+            event.kind,
+            JSON.stringify(event.payload),
+            event.createdAt,
+          );
+        return event;
+      },
+    );
+    return append.immediate(runId, input);
   }
 
   listEvents(runId: string): RunEvent[] {

@@ -17,6 +17,7 @@ export async function handleRunEvents(
   id: string,
   api?: RunApiPort,
   signal?: AbortSignal,
+  lastEventId = 0,
 ): Promise<Response> {
   const service = api ?? (await defaultApi());
   if (!service.getRun(id)) {
@@ -28,6 +29,9 @@ export async function handleRunEvents(
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let closed = false;
   let onAbort: () => void = () => undefined;
+  let lastSent = Number.isSafeInteger(lastEventId) && lastEventId > 0
+    ? lastEventId
+    : 0;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -45,12 +49,28 @@ export async function handleRunEvents(
       };
       onAbort = close;
 
-      for (const event of service.listEvents(id)) {
+      let snapshotting = true;
+      const buffered: RunEventInput[] = [];
+      const send = (event: RunEventInput) => {
+        if (closed || event.sequence <= lastSent) return;
+        lastSent = event.sequence;
         controller.enqueue(encodeEvent(encoder, event));
-      }
+      };
       unsubscribe = service.subscribe(id, (event) => {
-        if (!closed) controller.enqueue(encodeEvent(encoder, event));
+        if (snapshotting) buffered.push(event);
+        else send(event);
       });
+      for (const event of service
+        .listEvents(id)
+        .sort((left, right) => left.sequence - right.sequence)) {
+        send(event);
+      }
+      snapshotting = false;
+      for (const event of buffered.sort(
+        (left, right) => left.sequence - right.sequence,
+      )) {
+        send(event);
+      }
       heartbeat = setInterval(() => {
         if (!closed) controller.enqueue(encoder.encode(": heartbeat\n\n"));
       }, 15_000);
@@ -80,5 +100,8 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const { id } = await context.params;
-  return handleRunEvents(id, undefined, request.signal);
+  const header = request.headers.get("last-event-id");
+  const parsed = header === null ? 0 : Number(header);
+  const lastEventId = Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+  return handleRunEvents(id, undefined, request.signal, lastEventId);
 }

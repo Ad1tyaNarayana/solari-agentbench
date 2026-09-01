@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { SubmissionPackage } from "@/core/security/package-submission";
 import type { SandboxHandle } from "@/core/solari/contracts";
 import {
+  auditGeneratedResources,
   captureInventory,
   discoverMcpResourceIds,
   ResourceSupervisor,
@@ -38,6 +39,56 @@ test("closes browsers before killing compute and records every cleanup error", a
   ]);
 });
 
+test("resource cleanup is single-shot and returns the same issues to every caller", async () => {
+  let kills = 0;
+  const supervisor = new ResourceSupervisor();
+  supervisor.trackSandbox({
+    id: "sandbox-1",
+    async kill() {
+      kills += 1;
+      throw new Error("kill failed");
+    },
+  });
+
+  const first = await supervisor.cleanup();
+  const second = await supervisor.cleanup();
+
+  expect(kills).toBe(1);
+  expect(second).toEqual(first);
+});
+
+test("audits unapproved primitive use and more than one created resource", () => {
+  const audit = auditGeneratedResources({
+    approvedPrimitives: ["sandbox"],
+    before: {
+      browsers: new Set(),
+      sandboxes: new Set(),
+      desktops: new Set(),
+    },
+    after: {
+      browsers: new Set(),
+      sandboxes: new Set(["sandbox-1", "sandbox-2"]),
+      desktops: new Set(["desktop-1"]),
+    },
+    events: [
+      {
+        type: "item.completed",
+        item: {
+          type: "mcp_tool_call",
+          server: "solari",
+          tool: "solari_desktop_create",
+          result: { sessionId: "desktop-1" },
+        },
+      },
+    ],
+  });
+
+  expect(audit.violations).toEqual([
+    "desktop primitive was not approved",
+    "sandbox primitive created 2 resources (maximum 1)",
+  ]);
+});
+
 test("uploads sorted text entries below the fixed submission root", async () => {
   const calls: string[] = [];
   const sandbox = {
@@ -50,9 +101,9 @@ test("uploads sorted text entries below the fixed submission root", async () => 
   } satisfies Pick<SandboxHandle, "mkdir" | "writeFile">;
   const submission: SubmissionPackage = {
     entries: {
-      "source/z.ts": "z",
-      "results.json": "{}",
-      "source/a.ts": "a",
+      "source/z.ts": { kind: "text", contents: "z" },
+      "results.json": { kind: "text", contents: "{}" },
+      "source/a.ts": { kind: "text", contents: "a" },
     },
     digest: "digest",
   };
@@ -70,7 +121,12 @@ test("rejects upload destinations outside the fixed submission root", async () =
   await expect(
     uploadTextTree(
       {} as SandboxHandle,
-      { entries: { "results.json": "{}" }, digest: "digest" },
+      {
+        entries: {
+          "results.json": { kind: "text", contents: "{}" },
+        },
+        digest: "digest",
+      },
       "/tmp/submission",
     ),
   ).rejects.toThrow(/outside \/work\/submission/i);
@@ -108,9 +164,19 @@ test("extracts Solari resource IDs from structured MCP events", () => {
       { type: "item.completed", item: { result: { session_id: "browser-1" } } },
       { type: "item.completed", item: { result: { sandboxId: "sandbox-1" } } },
       { type: "item.completed", item: { result: { desktop_id: "desktop-1" } } },
+      {
+        type: "item.completed",
+        item: {
+          result: {
+            content: [
+              { type: "text", text: '{"sessionId":"browser-from-mcp-text"}' },
+            ],
+          },
+        },
+      },
     ]),
   ).toEqual({
-    browsers: new Set(["browser-1"]),
+    browsers: new Set(["browser-1", "browser-from-mcp-text"]),
     sandboxes: new Set(["sandbox-1"]),
     desktops: new Set(["desktop-1"]),
   });

@@ -36,6 +36,10 @@ export type CleanupIssue = {
   detail: string;
 };
 
+export type RunProvenance =
+  | { kind: "live"; label: string }
+  | { kind: "synthetic-demo"; label: string };
+
 export type RunRecord = {
   id: string;
   taskId: string;
@@ -56,4 +60,5 @@ export type RunRecord = {
   completedAt?: string;
   durationMs?: number;
   cleanupIssues?: CleanupIssue[];
+  provenance?: RunProvenance;
 };

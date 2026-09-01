@@ -28,22 +28,24 @@
       "total": 100
     },
     "evidence": {
-      "sandboxVerified": true,
       "expectedUrl": "https://example.com/agentbench/verification",
       "observedUrl": "https://example.com/agentbench/verification",
       "browserScreenshot": "/demo/url-shortener-browser.png",
-      "desktopScreenshot": "/demo/url-shortener-desktop.png",
-      "demoSeed": true
+      "desktopScreenshot": "/demo/url-shortener-desktop.png"
     },
     "sanitizedLogs": [
-      "Clean install and production build succeeded.",
-      "Recorded browser redirect assertion passed.",
-      "Desktop evidence captured."
+      "Illustrative build narrative for the synthetic public demo.",
+      "Illustrative redirect result; no live session was executed for this seed.",
+      "Illustrative desktop artifact generated locally for layout demonstration."
     ],
     "createdAt": "2026-09-01T09:00:00.000Z",
     "startedAt": "2026-09-01T09:00:01.000Z",
     "completedAt": "2026-09-01T09:03:43.000Z",
-    "durationMs": 222000
+    "durationMs": 222000,
+    "provenance": {
+      "kind": "synthetic-demo",
+      "label": "Synthetic demo — not live verification"
+    }
   },
   {
     "id": "demo-sol-stats",
@@ -72,7 +74,6 @@
       "total": 92
     },
     "evidence": {
-      "sandboxVerified": true,
       "deterministicPoints": true,
       "expectedStatistics": {
         "meanX": 54.27,
@@ -89,16 +90,19 @@
         "correlation": -0.069
       },
       "circleError": 0.082,
-      "comparisonPlot": "/demo/same-stats-comparison.png",
-      "demoSeed": true
+      "comparisonPlot": "/demo/same-stats-comparison.png"
     },
     "sanitizedLogs": [
-      "Executed the exact replication CLI twice; output hashes match."
+      "Illustrative replication narrative; these values are synthetic seed data."
     ],
     "createdAt": "2026-09-01T09:05:00.000Z",
     "startedAt": "2026-09-01T09:05:01.000Z",
     "completedAt": "2026-09-01T09:07:36.000Z",
-    "durationMs": 155000
+    "durationMs": 155000,
+    "provenance": {
+      "kind": "synthetic-demo",
+      "label": "Synthetic demo — not live verification"
+    }
   },
   {
     "id": "demo-luna-url",
@@ -131,20 +135,22 @@
       "total": 98
     },
     "evidence": {
-      "sandboxVerified": true,
       "expectedUrl": "https://example.com/agentbench/verification",
       "observedUrl": "https://example.com/agentbench/verification",
       "browserScreenshot": "/demo/url-shortener-browser.png",
-      "desktopScreenshot": "/demo/url-shortener-desktop.png",
-      "demoSeed": true
+      "desktopScreenshot": "/demo/url-shortener-desktop.png"
     },
     "sanitizedLogs": [
-      "All functional assertions passed in fresh verifier resources."
+      "Illustrative functional result; no live verifier resources were created."
     ],
     "createdAt": "2026-09-01T09:10:00.000Z",
     "startedAt": "2026-09-01T09:10:01.000Z",
     "completedAt": "2026-09-01T09:13:13.000Z",
-    "durationMs": 192000
+    "durationMs": 192000,
+    "provenance": {
+      "kind": "synthetic-demo",
+      "label": "Synthetic demo — not live verification"
+    }
   },
   {
     "id": "demo-luna-stats",
@@ -175,7 +181,6 @@
       "total": 55
     },
     "evidence": {
-      "sandboxVerified": true,
       "deterministicPoints": true,
       "expectedStatistics": {
         "meanX": 54.27,
@@ -185,16 +190,19 @@
         "meanX": 54.29,
         "correlation": 0.12
       },
-      "comparisonPlot": "/demo/same-stats-comparison.png",
-      "demoSeed": true
+      "comparisonPlot": "/demo/same-stats-comparison.png"
     },
     "sanitizedLogs": [
-      "Deterministic output confirmed.",
-      "Correlation tolerance check failed."
+      "Illustrative deterministic outcome for the synthetic demo.",
+      "Illustrative correlation tolerance failure."
     ],
     "createdAt": "2026-09-01T09:15:00.000Z",
     "startedAt": "2026-09-01T09:15:01.000Z",
     "completedAt": "2026-09-01T09:17:21.000Z",
-    "durationMs": 140000
+    "durationMs": 140000,
+    "provenance": {
+      "kind": "synthetic-demo",
+      "label": "Synthetic demo — not live verification"
+    }
   }
 ]

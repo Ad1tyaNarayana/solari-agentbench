@@ -1,5 +1,9 @@
 import type { AgentConfig, FailureCode } from "@/core/domain/run";
-import { SpawnCommandRunner, type CommandRunner } from "./process";
+import {
+  safeChildEnvironment,
+  SpawnCommandRunner,
+  type CommandRunner,
+} from "./process";
 
 export type PreflightDetailCode =
   | "codex_not_logged_in"
@@ -42,10 +46,9 @@ export async function runPreflight(
     requestedNodeEnvironment === "development"
       ? requestedNodeEnvironment
       : "development";
-  const commandEnvironment: NodeJS.ProcessEnv = {
-    ...environment,
+  const commandEnvironment = safeChildEnvironment(environment, {
     NODE_ENV: nodeEnvironment,
-  };
+  });
 
   const login = await runner.run({
     command: "codex",

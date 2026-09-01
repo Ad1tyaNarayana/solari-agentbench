@@ -13,6 +13,10 @@ const completeScore = {
   budget: 5,
   total: 100,
 };
+const syntheticProvenance = {
+  kind: "synthetic-demo",
+  label: "Synthetic demo — not live verification",
+} as const;
 
 export const demoRuns: RunRecord[] = [
   {
@@ -34,22 +38,21 @@ export const demoRuns: RunRecord[] = [
     },
     score: completeScore,
     evidence: {
-      sandboxVerified: true,
       expectedUrl: "https://example.com/agentbench/verification",
       observedUrl: "https://example.com/agentbench/verification",
       browserScreenshot: "/demo/url-shortener-browser.png",
       desktopScreenshot: "/demo/url-shortener-desktop.png",
-      demoSeed: true,
     },
     sanitizedLogs: [
-      "Clean install and production build succeeded.",
-      "Recorded browser redirect assertion passed.",
-      "Desktop evidence captured.",
+      "Illustrative build narrative for the synthetic public demo.",
+      "Illustrative redirect result; no live session was executed for this seed.",
+      "Illustrative desktop artifact generated locally for layout demonstration.",
     ],
     createdAt,
     startedAt: "2026-09-01T09:00:01.000Z",
     completedAt: "2026-09-01T09:03:43.000Z",
     durationMs: 222_000,
+    provenance: syntheticProvenance,
   },
   {
     id: "demo-sol-stats",
@@ -67,19 +70,20 @@ export const demoRuns: RunRecord[] = [
     },
     score: { ...completeScore, core: 40, methodology: 12, total: 92 },
     evidence: {
-      sandboxVerified: true,
       deterministicPoints: true,
       expectedStatistics: { meanX: 54.27, meanY: 47.84, varianceX: 280.9, varianceY: 725.23, correlation: -0.07 },
       observedStatistics: { meanX: 54.28, meanY: 47.83, varianceX: 280.88, varianceY: 725.25, correlation: -0.069 },
       circleError: 0.082,
       comparisonPlot: "/demo/same-stats-comparison.png",
-      demoSeed: true,
     },
-    sanitizedLogs: ["Executed the exact replication CLI twice; output hashes match."],
+    sanitizedLogs: [
+      "Illustrative replication narrative; these values are synthetic seed data.",
+    ],
     createdAt: "2026-09-01T09:05:00.000Z",
     startedAt: "2026-09-01T09:05:01.000Z",
     completedAt: "2026-09-01T09:07:36.000Z",
     durationMs: 155_000,
+    provenance: syntheticProvenance,
   },
   {
     id: "demo-luna-url",
@@ -101,18 +105,19 @@ export const demoRuns: RunRecord[] = [
     },
     score: { ...completeScore, methodology: 13, total: 98 },
     evidence: {
-      sandboxVerified: true,
       expectedUrl: "https://example.com/agentbench/verification",
       observedUrl: "https://example.com/agentbench/verification",
       browserScreenshot: "/demo/url-shortener-browser.png",
       desktopScreenshot: "/demo/url-shortener-desktop.png",
-      demoSeed: true,
     },
-    sanitizedLogs: ["All functional assertions passed in fresh verifier resources."],
+    sanitizedLogs: [
+      "Illustrative functional result; no live verifier resources were created.",
+    ],
     createdAt: "2026-09-01T09:10:00.000Z",
     startedAt: "2026-09-01T09:10:01.000Z",
     completedAt: "2026-09-01T09:13:13.000Z",
     durationMs: 192_000,
+    provenance: syntheticProvenance,
   },
   {
     id: "demo-luna-stats",
@@ -132,18 +137,20 @@ export const demoRuns: RunRecord[] = [
     },
     score: { core: 0, reproducible: 20, methodology: 15, evidence: 15, budget: 5, total: 55 },
     evidence: {
-      sandboxVerified: true,
       deterministicPoints: true,
       expectedStatistics: { meanX: 54.27, correlation: -0.07 },
       observedStatistics: { meanX: 54.29, correlation: 0.12 },
       comparisonPlot: "/demo/same-stats-comparison.png",
-      demoSeed: true,
     },
-    sanitizedLogs: ["Deterministic output confirmed.", "Correlation tolerance check failed."],
+    sanitizedLogs: [
+      "Illustrative deterministic outcome for the synthetic demo.",
+      "Illustrative correlation tolerance failure.",
+    ],
     createdAt: "2026-09-01T09:15:00.000Z",
     startedAt: "2026-09-01T09:15:01.000Z",
     completedAt: "2026-09-01T09:17:21.000Z",
     durationMs: 140_000,
+    provenance: syntheticProvenance,
   },
 ];
 

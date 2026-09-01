@@ -55,6 +55,25 @@ test("failed runs expose the failure and last successful stage", () => {
   ).toBeInTheDocument();
 });
 
+test("synthetic demo cards are unmistakably labeled as non-live proof", () => {
+  render(
+    <RunCard
+      run={{
+        ...completedRun,
+        id: "synthetic",
+        provenance: {
+          kind: "synthetic-demo",
+          label: "Synthetic demo — not live verification",
+        },
+      }}
+    />,
+  );
+
+  expect(
+    screen.getByText(/synthetic demo.*not live verification/i),
+  ).toBeInTheDocument();
+});
+
 afterEach(() => vi.unstubAllGlobals());
 
 test("starts a selected benchmark run through the API", async () => {

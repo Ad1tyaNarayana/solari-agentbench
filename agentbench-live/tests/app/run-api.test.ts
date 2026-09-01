@@ -114,3 +114,78 @@ test("event stream replays sanitized history before subscribing live", async () 
   await reader.cancel();
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
+
+test("event stream subscribes before its snapshot and deduplicates buffered races", async () => {
+  const calls: string[] = [];
+  let listener: ((event: RunEventInput) => void) | undefined;
+  const first: RunEvent = {
+    runId: "run-1",
+    sequence: 1,
+    kind: "stage",
+    payload: { stage: "planning" },
+    createdAt: "2026-09-01T00:00:01.000Z",
+  };
+  const second: RunEvent = {
+    ...first,
+    sequence: 2,
+    payload: { stage: "generating" },
+  };
+  const api = createApi({
+    subscribe: (_runId, next) => {
+      calls.push("subscribe");
+      listener = next;
+      return () => undefined;
+    },
+    listEvents: () => {
+      calls.push("snapshot");
+      listener?.(second);
+      return [first, second];
+    },
+  });
+  const controller = new AbortController();
+  const response = await handleRunEvents("run-1", api, controller.signal);
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [
+    decoder.decode((await reader.read()).value),
+    decoder.decode((await reader.read()).value),
+  ].join("");
+
+  expect(calls).toEqual(["subscribe", "snapshot"]);
+  expect(chunks.match(/id: 2/g)).toHaveLength(1);
+  expect(chunks.indexOf("id: 1")).toBeLessThan(chunks.indexOf("id: 2"));
+  controller.abort();
+  await reader.cancel();
+});
+
+test("event stream filters snapshots and live delivery by Last-Event-ID", async () => {
+  let listener: ((event: RunEventInput) => void) | undefined;
+  const api = createApi({
+    listEvents: () => [1, 2, 3].map((sequence) => ({
+      runId: "run-1",
+      sequence,
+      kind: "log",
+      payload: { sequence },
+      createdAt: "2026-09-01T00:00:01.000Z",
+    })),
+    subscribe: (_runId, next) => {
+      listener = next;
+      return () => undefined;
+    },
+  });
+  const controller = new AbortController();
+  const response = await handleRunEvents("run-1", api, controller.signal, 2);
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  const historical = decoder.decode((await reader.read()).value);
+  expect(historical).toContain("id: 3");
+  expect(historical).not.toMatch(/id: [12]/);
+
+  listener?.({ sequence: 2, kind: "log", payload: { duplicate: true } });
+  listener?.({ sequence: 4, kind: "stage", payload: { stage: "building" } });
+  const live = decoder.decode((await reader.read()).value);
+  expect(live).toContain("id: 4");
+  expect(live).not.toContain("duplicate");
+  controller.abort();
+  await reader.cancel();
+});

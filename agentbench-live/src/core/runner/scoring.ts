@@ -41,3 +41,15 @@ export function computeScore(outcome: ScoreOutcome): ScoreBreakdown {
 
   return { ...score, total: Object.values(score).reduce((sum, item) => sum + item, 0) };
 }
+
+export function applyBudgetOutcome(
+  score: ScoreBreakdown,
+  withinBudget: boolean,
+): ScoreBreakdown {
+  const budget = withinBudget && score.reproducible > 0 ? 5 : 0;
+  return {
+    ...score,
+    budget,
+    total: score.total - score.budget + budget,
+  };
+}

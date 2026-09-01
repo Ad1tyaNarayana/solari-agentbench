@@ -46,4 +46,11 @@ test("seeded run DTOs omit replay URLs and cover the complete matrix", () => {
   );
   expect(JSON.stringify(demoRuns)).not.toContain("browserRecording");
   expect(JSON.stringify(demoRuns)).toContain("/demo/url-shortener-desktop.png");
+  expect(demoRuns.every((run) => run.provenance?.kind === "synthetic-demo")).toBe(
+    true,
+  );
+  expect(JSON.stringify(demoRuns)).not.toMatch(/sandboxVerified/);
+  expect(JSON.stringify(demoRuns)).not.toMatch(
+    /verifier-owned|assertion passed|fresh verifier|hashes match/i,
+  );
 });

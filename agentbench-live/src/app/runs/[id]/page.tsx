@@ -42,6 +42,13 @@ export default async function RunDetailPage({
         </div>
       </section>
 
+      {run.provenance?.kind === "synthetic-demo" ? (
+        <aside className="failure-banner">
+          <strong>{run.provenance.label}</strong>
+          <p>This detail page contains illustrative seed data and locally generated mock artifacts. It is not live benchmark proof.</p>
+        </aside>
+      ) : null}
+
       {run.stage === "failed" ? (
         <aside className="failure-banner">
           <strong>{run.failureCode?.replaceAll("_", " ") ?? "Run failed"}</strong>

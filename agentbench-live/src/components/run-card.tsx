@@ -18,16 +18,20 @@ export function RunCard({ run }: { run: RunRecord }) {
   const failedAt = run.failureCode ? failureStages[run.failureCode] : undefined;
   const terminal = run.stage === "completed" || run.stage === "failed";
   const status = run.stage === "completed" ? "Passed" : run.stage === "failed" ? "Failed" : "Running";
+  const synthetic = run.provenance?.kind === "synthetic-demo";
 
   return (
     <Link
       href={`/runs/${run.id}`}
       className={`run-card run-card--${run.stage}`}
       data-testid={`run-card-${run.id}`}
-      aria-label={`${total ?? "No score"} · ${status}`}
+      aria-label={`${total ?? "No score"} · ${status}${synthetic ? " · Synthetic demo, not live verification" : ""}`}
     >
       <span className="run-card__score">{typeof total === "number" ? total : "—"}</span>
       <span className="run-card__status">{status}</span>
+      {synthetic ? (
+        <span className="run-card__detail">{run.provenance?.label}</span>
+      ) : null}
       {run.stage === "failed" ? (
         <span className="run-card__detail">
           Failed during {failedAt ?? "execution"}

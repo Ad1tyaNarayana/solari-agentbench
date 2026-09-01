@@ -8,6 +8,7 @@ export type CommandSpec = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  terminationGraceMs?: number;
   maxOutputBytes?: number;
   redactionContext?: RedactionContext;
   onEvent?: (event: JsonlEvent) => void;
@@ -31,7 +32,69 @@ function bounded(value: string, addition: string, maximum: number): string {
   return `${value}${addition}`.slice(0, maximum);
 }
 
-async function terminateProcessTree(child: ChildProcess): Promise<void> {
+const safeEnvironmentKeys = [
+  "APPDATA",
+  "CODEX_HOME",
+  "ComSpec",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LOCALAPPDATA",
+  "NODE_EXTRA_CA_CERTS",
+  "NODE_ENV",
+  "PATH",
+  "PATHEXT",
+  "SHELL",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "SystemRoot",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "USERPROFILE",
+  "WINDIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+] as const;
+
+export function safeChildEnvironment(
+  source: Record<string, string | undefined> = process.env,
+  additions: Record<string, string | undefined> = {},
+): NodeJS.ProcessEnv {
+  const environment: Record<string, string> = {};
+  for (const key of safeEnvironmentKeys) {
+    const value = source[key];
+    if (value !== undefined) environment[key] = value;
+  }
+  for (const [key, value] of Object.entries(additions)) {
+    if (value !== undefined) environment[key] = value;
+  }
+  return environment as NodeJS.ProcessEnv;
+}
+
+function isExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+async function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (isExited(child)) return;
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(finish, timeoutMs);
+    const onClose = () => finish();
+    function finish() {
+      clearTimeout(timeout);
+      child.removeListener("close", onClose);
+      resolve();
+    }
+    child.once("close", onClose);
+  });
+}
+
+async function terminateProcessTree(
+  child: ChildProcess,
+  graceMs: number,
+): Promise<void> {
   if (!child.pid) return;
   if (process.platform === "win32") {
     await new Promise<void>((resolve) => {
@@ -49,6 +112,13 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
     process.kill(-child.pid, "SIGTERM");
   } catch {
     child.kill("SIGTERM");
+  }
+  await waitForExit(child, graceMs);
+  if (isExited(child)) return;
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    child.kill("SIGKILL");
   }
 }
 
@@ -83,7 +153,7 @@ export class SpawnCommandRunner implements CommandRunner {
 
       controller.signal.addEventListener(
         "abort",
-        () => void terminateProcessTree(child),
+        () => void terminateProcessTree(child, spec.terminationGraceMs ?? 1_000),
         { once: true },
       );
 

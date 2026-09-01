@@ -30,7 +30,17 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
     },
   };
   const verifier = {
-    async verify() {
+    async verify(context: {
+      onStage(stage: "provisioning" | "building" | "verifying" | "capturing"): void;
+    }) {
+      for (const stage of [
+        "provisioning",
+        "building",
+        "verifying",
+        "capturing",
+      ] as const) {
+        context.onStage(stage);
+      }
       return {
         score: {
           core: 45,
@@ -62,7 +72,9 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
       async dispose() {},
     }),
     packageSubmission: async () => ({
-      entries: { "results.json": "{}" },
+      entries: {
+        "results.json": { kind: "text" as const, contents: "{}" },
+      },
       digest: "digest",
     }),
     schemaPath: "C:\\schemas\\run-plan.schema.json",

@@ -27,9 +27,13 @@ test("task contract exposes stable UI selectors without verifier input", () => {
 
 test("scores an independently observed redirect and captures all three primitives", async () => {
   const services = createUrlShortenerServices();
+  const verificationContext = context(fixturePackage("passing"));
+  verificationContext.onStage = (stage) => {
+    services.state.stages.push(stage);
+  };
   const result = await new UrlShortenerVerifier(services, {
     sleep: async () => undefined,
-  }).verify(context(fixturePackage("passing")));
+  }).verify(verificationContext);
   expect(result.functional.passed).toBe(true);
   expect(result.score.core).toBe(45);
   expect(result.evidence).toMatchObject({
@@ -40,6 +44,14 @@ test("scores an independently observed redirect and captures all three primitive
   expect(services.state.sandboxKilled).toBe(true);
   expect(services.state.browserClosed).toBe(true);
   expect(services.state.desktopKilled).toBe(true);
+  expect(services.state.browserCloseCalls).toBe(1);
+  expect(services.state.stages).toEqual([
+    "provisioning",
+    "building",
+    "verifying",
+    "capturing",
+  ]);
+  expect(services.state.sandboxTimeoutMs).toBe(1_234);
 });
 
 test("does not award functional points for an observed wrong redirect", async () => {
@@ -82,19 +94,36 @@ function context(submission: SubmissionPackage) {
     reason: { sandbox: "build", browser: "inspect" },
     verificationStrategy: "redirect assertion",
   };
-  return { run, task: urlShortenerTask, agent, plan, submission };
+  return {
+    run,
+    task: urlShortenerTask,
+    agent,
+    plan,
+    submission,
+    remainingMs: () => 1_234,
+    runWithDeadline: async <T>(_label: string, operation: () => Promise<T>) =>
+      operation(),
+    onStage: (stage: string) => {
+      void stage;
+    },
+  };
 }
 
 function fixturePackage(kind: "passing" | "failing"): SubmissionPackage {
   const root = resolve(
     `tests/fixtures/url-shortener/${kind}/submission`,
   );
-  const entries: Record<string, string> = {};
+  const entries: SubmissionPackage["entries"] = {};
   const visit = (directory: string) => {
     for (const name of readdirSync(directory)) {
       const path = resolve(directory, name);
       if (statSync(path).isDirectory()) visit(path);
-      else entries[relative(root, path).replaceAll("\\", "/")] = readFileSync(path, "utf8");
+      else {
+        entries[relative(root, path).replaceAll("\\", "/")] = {
+          kind: "text",
+          contents: readFileSync(path, "utf8"),
+        };
+      }
     }
   };
   visit(root);
@@ -104,11 +133,23 @@ function fixturePackage(kind: "passing" | "failing"): SubmissionPackage {
 function createUrlShortenerServices(options: {
   wrongRedirect?: boolean;
   buildFails?: boolean;
-} = {}): SolariServices & { state: Record<string, boolean> } {
+} = {}): SolariServices & {
+  state: {
+    sandboxKilled: boolean;
+    browserClosed: boolean;
+    desktopKilled: boolean;
+    browserCloseCalls: number;
+    sandboxTimeoutMs?: number;
+    stages: string[];
+  };
+} {
   const state = {
     sandboxKilled: false,
     browserClosed: false,
     desktopKilled: false,
+    browserCloseCalls: 0,
+    sandboxTimeoutMs: undefined as number | undefined,
+    stages: [] as string[],
   };
   let currentUrl = "";
   const previewUrl = "https://preview.getsolari.test";
@@ -138,6 +179,7 @@ function createUrlShortenerServices(options: {
     },
     async close() {
       state.browserClosed = true;
+      state.browserCloseCalls += 1;
     },
   };
   const browser: BrowserService = {
@@ -186,7 +228,8 @@ function createUrlShortenerServices(options: {
     },
   };
   const sandbox: SandboxService = {
-    async create() {
+    async create(options) {
+      state.sandboxTimeoutMs = options?.timeoutMs;
       return sandboxHandle;
     },
     async connect() {

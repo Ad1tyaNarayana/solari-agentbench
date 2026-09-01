@@ -3,6 +3,8 @@ import type { AgentConfig } from "@/core/domain/run";
 import { RunPlanSchema, validatePlanForTask, type RunPlan } from "@/core/domain/plan";
 import type { TaskManifest } from "@/core/domain/task";
 import type { CommandRunner, CommandSpec } from "./process";
+import { safeChildEnvironment } from "./process";
+import type { JsonlEvent } from "./jsonl";
 
 export type PlannerInput = {
   agent: AgentConfig;
@@ -21,23 +23,23 @@ export class PlanInvalidError extends Error {
 }
 
 export class AgentTimeoutError extends Error {
-  constructor(message = "Agent process timed out") {
+  constructor(
+    message = "Agent process timed out",
+    readonly events: JsonlEvent[] = [],
+  ) {
     super(message);
     this.name = "AgentTimeoutError";
   }
 }
 
 export class AgentProcessError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly events: JsonlEvent[] = [],
+  ) {
     super(message);
     this.name = "AgentProcessError";
   }
-}
-
-function plannerEnvironment(): NodeJS.ProcessEnv {
-  const environment = { ...process.env };
-  delete environment.SOLARI_API_KEY;
-  return environment;
 }
 
 function buildPlannerCommand(
@@ -62,7 +64,7 @@ function buildPlannerCommand(
       input.outputPath,
       prompt,
     ],
-    env: plannerEnvironment(),
+    env: safeChildEnvironment(),
     timeoutMs: input.timeoutMs,
   };
 }

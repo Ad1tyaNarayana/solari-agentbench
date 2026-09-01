@@ -31,13 +31,20 @@ export function EvidencePanel({ run }: { run: RunRecord }) {
   const browserScreenshot = typeof evidence.browserScreenshot === "string" ? evidence.browserScreenshot : undefined;
   const desktopScreenshot = typeof evidence.desktopScreenshot === "string" ? evidence.desktopScreenshot : undefined;
   const comparisonPlot = typeof evidence.comparisonPlot === "string" ? evidence.comparisonPlot : undefined;
+  const synthetic = run.provenance?.kind === "synthetic-demo";
 
   return (
     <section className="panel evidence-panel" aria-labelledby="evidence-heading">
       <div className="section-heading">
-        <p className="eyebrow">Verifier-owned output</p>
+        <p className="eyebrow">
+          {synthetic ? "Illustrative synthetic output" : "Verifier-owned output"}
+        </p>
         <h2 id="evidence-heading">Evidence</h2>
       </div>
+
+      {synthetic ? (
+        <p className="retention-note">{run.provenance?.label}. These artifacts and values are illustrative seed data, not proof from a Solari run.</p>
+      ) : null}
 
       {metricKeys.length > 0 ? (
         <div className="metrics-table-wrap">
@@ -68,7 +75,7 @@ export function EvidencePanel({ run }: { run: RunRecord }) {
 
       {run.sanitizedLogs.length > 0 ? (
         <div className="log-block">
-          <h3>Sanitized verifier log</h3>
+          <h3>{synthetic ? "Synthetic demo narrative" : "Sanitized verifier log"}</h3>
           <pre>{run.sanitizedLogs.join("\n")}</pre>
         </div>
       ) : null}
