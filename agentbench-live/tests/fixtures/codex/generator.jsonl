@@ -1,0 +1,2 @@
+{"type":"item.completed","item":{"type":"mcp_tool_call","server":"solari","tool":"sandbox_create","result":{"sandbox_id":"sbx-demo"}}}
+{"type":"turn.completed","usage":{"input_tokens":20,"output_tokens":8}}
