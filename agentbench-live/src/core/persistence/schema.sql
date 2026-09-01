@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS runs (
   created_at TEXT NOT NULL,
   started_at TEXT,
   completed_at TEXT,
-  duration_ms INTEGER
+  duration_ms INTEGER,
+  cleanup_issues TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS run_events (

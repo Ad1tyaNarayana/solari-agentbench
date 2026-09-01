@@ -31,6 +31,11 @@ export type AgentConfig = {
   reasoningEffort: ReasoningEffort;
 };
 
+export type CleanupIssue = {
+  code: "cleanup_failed";
+  detail: string;
+};
+
 export type RunRecord = {
   id: string;
   taskId: string;
@@ -50,4 +55,5 @@ export type RunRecord = {
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
+  cleanupIssues?: CleanupIssue[];
 };

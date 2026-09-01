@@ -30,6 +30,7 @@ type RunRow = {
   started_at: string | null;
   completed_at: string | null;
   duration_ms: number | null;
+  cleanup_issues: string;
 };
 
 type EventRow = {
@@ -64,6 +65,9 @@ function fromRunRow(row: RunRow): RunRecord {
     startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     durationMs: row.duration_ms ?? undefined,
+    cleanupIssues: JSON.parse(row.cleanup_issues) as NonNullable<
+      RunRecord["cleanupIssues"]
+    >,
   };
 }
 
@@ -172,8 +176,8 @@ export class SqliteRunRepository implements RunRepository {
         id, task_id, task_version, agent_id, model, reasoning_effort, stage,
         last_successful_stage, run_plan, score, evidence, failure_code,
         failure_detail, sanitized_logs, created_at, started_at, completed_at,
-        duration_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        duration_ms, cleanup_issues
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         record.id,
         record.taskId,
@@ -193,6 +197,7 @@ export class SqliteRunRepository implements RunRepository {
         record.startedAt ?? null,
         record.completedAt ?? null,
         record.durationMs ?? null,
+        JSON.stringify(record.cleanupIssues ?? []),
       );
   }
 
@@ -202,7 +207,7 @@ export class SqliteRunRepository implements RunRepository {
         task_version = ?, model = ?, reasoning_effort = ?, stage = ?,
         last_successful_stage = ?, run_plan = ?, score = ?, evidence = ?,
         failure_code = ?, failure_detail = ?, sanitized_logs = ?, started_at = ?,
-        completed_at = ?, duration_ms = ?
+        completed_at = ?, duration_ms = ?, cleanup_issues = ?
       WHERE id = ?`)
       .run(
         record.taskVersion ?? null,
@@ -219,6 +224,7 @@ export class SqliteRunRepository implements RunRepository {
         record.startedAt ?? null,
         record.completedAt ?? null,
         record.durationMs ?? null,
+        JSON.stringify(record.cleanupIssues ?? []),
         record.id,
       );
   }
