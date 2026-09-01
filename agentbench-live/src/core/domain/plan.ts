@@ -15,9 +15,9 @@ export const RunPlanSchema = z
         }
       }),
     reason: z.object({
-      browser: z.string().min(3).optional(),
-      sandbox: z.string().min(3).optional(),
-      desktop: z.string().min(3).optional(),
+      browser: z.string().min(3).nullable().optional(),
+      sandbox: z.string().min(3).nullable().optional(),
+      desktop: z.string().min(3).nullable().optional(),
     }),
     verificationStrategy: z.string().min(3),
   })
@@ -33,6 +33,25 @@ export const RunPlanSchema = z
   });
 
 export type RunPlan = z.infer<typeof RunPlanSchema>;
+
+export function runPlanOutputJsonSchema(): Record<string, unknown> {
+  const schema = z.toJSONSchema(RunPlanSchema, {
+    target: "draft-7",
+  }) as Record<string, unknown> & {
+    properties?: {
+      reason?: {
+        properties?: Record<string, unknown>;
+        required?: string[];
+      };
+    };
+  };
+  const reason = schema.properties?.reason;
+  if (!reason?.properties) {
+    throw new Error("RunPlan reason schema is missing");
+  }
+  reason.required = Object.keys(reason.properties);
+  return schema;
+}
 
 export function validatePlanForTask(
   plan: RunPlan,

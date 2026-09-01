@@ -91,4 +91,5 @@ export type SolariServices = {
   browser: BrowserService;
   sandbox: SandboxService;
   desktop: DesktopService;
+  dispose?: () => Promise<void>;
 };

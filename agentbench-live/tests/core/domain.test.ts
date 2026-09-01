@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { RunPlanSchema, validatePlanForTask } from "@/core/domain/plan";
 import type { TaskManifest } from "@/core/domain/task";
 import { getTask, listTasks } from "@/core/tasks/registry";
+import { sameStatsTask } from "@/core/tasks/same-stats";
 
 const task: TaskManifest = {
   id: "sample",
@@ -58,4 +59,28 @@ test("the registry exposes only the two versioned MVP tasks", () => {
     "same-stats-different-graph",
   ]);
   expect(() => getTask("unknown")).toThrow(/unknown task/i);
+});
+
+test("paper replication reserves time for generation and independent verification", () => {
+  expect(sameStatsTask.budget).toEqual({
+    totalMs: 300_000,
+    browserMs: 60_000,
+    sandboxMs: 180_000,
+    desktopMs: 0,
+  });
+});
+
+test("paper replication declares exact submission paths", () => {
+  expect(sameStatsTask.prompt).toContain("submission/source/reproduce.py");
+  expect(sameStatsTask.prompt).toContain("submission/source/requirements.txt");
+  expect(sameStatsTask.prompt).toContain("submission/results.json");
+  expect(sameStatsTask.prompt).toContain("submission/methodology.md");
+  expect(sameStatsTask.prompt).toContain("submission/provenance.json");
+});
+
+test("paper replication discloses the methodology headings used by its verifier", () => {
+  expect(sameStatsTask.prompt).toContain("# Seed");
+  expect(sameStatsTask.prompt).toContain("# Objective Function");
+  expect(sameStatsTask.prompt).toContain("# Temperature Schedule");
+  expect(sameStatsTask.prompt).toContain("# Acceptance Rule");
 });

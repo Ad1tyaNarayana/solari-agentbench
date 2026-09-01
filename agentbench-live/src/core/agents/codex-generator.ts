@@ -105,7 +105,7 @@ export function solariPrimitivesForTool(toolName: string): Primitive[] {
 }
 
 export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
-  const prompt = `${input.taskPrompt}\n\nApproved RunPlan:\n${JSON.stringify(input.plan, null, 2)}\n\nWrite the complete final submission under submission/.`;
+  const prompt = `${input.taskPrompt}\n\nApproved RunPlan:\n${JSON.stringify(input.plan, null, 2)}\n\nCreate the mandatory submission files first, in the fewest write operations possible: submission/results.json, submission/methodology.md, submission/provenance.json, and all task-required source and dependency files. Do not verify or polish until every required file exists and results.json contains valid JSON. Then use only the remaining time for targeted checks. Write the complete final submission under submission/.`;
   const enabledTools = solariToolsForPrimitives(input.plan.primitives);
   const guardPath = resolve("src/core/agents/solari-mcp-guard.mjs");
   const serverArgs = [
@@ -123,6 +123,7 @@ export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
       "--json",
       "--skip-git-repo-check",
       "--ignore-user-config",
+      "--approve-for-me",
       "--model",
       input.agent.model,
       "-c",

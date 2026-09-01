@@ -68,7 +68,7 @@ class BrowserHandleAdapter implements BrowserHandle {
   }
 }
 
-class BrowserServiceAdapter implements BrowserService {
+export class BrowserServiceAdapter implements BrowserService {
   constructor(private readonly client: Solari) {}
 
   async create(options = {}): Promise<BrowserHandle> {
@@ -105,6 +105,10 @@ class BrowserServiceAdapter implements BrowserService {
   ): Promise<{ url: string; expiresInSeconds: number }> {
     const replay: ReplayUrl = await this.client.sessions.getReplayUrl(id);
     return { url: replay.url, expiresInSeconds: replay.expiresInSeconds };
+  }
+
+  dispose(): Promise<void> {
+    return this.client.close();
   }
 }
 
@@ -152,15 +156,24 @@ class SandboxHandleAdapter implements SandboxHandle {
   }
 }
 
-class SandboxServiceAdapter implements SandboxService {
+export class SandboxServiceAdapter implements SandboxService {
   constructor(private readonly client: SandboxClient) {}
 
   async create(options = {}): Promise<SandboxHandle> {
-    return new SandboxHandleAdapter(await this.client.create(options));
+    const sandbox = await this.client.create(options);
+    try {
+      await sandbox.connect();
+    } catch (error) {
+      await sandbox.kill().catch(() => undefined);
+      throw error;
+    }
+    return new SandboxHandleAdapter(sandbox);
   }
 
   async connect(id: string): Promise<SandboxHandle> {
-    return new SandboxHandleAdapter(await this.client.connect(id));
+    const sandbox = await this.client.connect(id);
+    await sandbox.connect();
+    return new SandboxHandleAdapter(sandbox);
   }
 
   async listIds(): Promise<string[]> {
@@ -209,14 +222,21 @@ class DesktopHandleAdapter implements DesktopHandle {
   }
 }
 
-class DesktopServiceAdapter implements DesktopService {
+export class DesktopServiceAdapter implements DesktopService {
   constructor(
     private readonly client: DesktopClient,
     private readonly inventoryClient: SandboxClient,
   ) {}
 
   async create(options = {}): Promise<DesktopHandle> {
-    return new DesktopHandleAdapter(await this.client.create(options));
+    const desktop = await this.client.create(options);
+    try {
+      await desktop.connect();
+    } catch (error) {
+      await desktop.kill().catch(() => undefined);
+      throw error;
+    }
+    return new DesktopHandleAdapter(desktop);
   }
 
   async listIds(): Promise<string[]> {
@@ -240,5 +260,6 @@ export function createSolariServices(
     browser: new BrowserServiceAdapter(browserClient),
     sandbox: new SandboxServiceAdapter(sandboxClient),
     desktop: new DesktopServiceAdapter(desktopClient, sandboxClient),
+    dispose: () => browserClient.close(),
   };
 }

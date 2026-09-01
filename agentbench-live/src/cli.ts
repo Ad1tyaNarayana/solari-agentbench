@@ -185,7 +185,11 @@ export function createDefaultRuntime(): CliRuntime {
     smoke: () => runSolariSmoke(services),
     writeLine: (line) => console.log(line),
     async dispose() {
-      repository.close();
+      try {
+        await services.dispose?.();
+      } finally {
+        repository.close();
+      }
     },
   };
 }

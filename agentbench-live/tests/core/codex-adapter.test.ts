@@ -115,6 +115,9 @@ test("generator attaches only the Solari MCP server", () => {
     timeoutMs: 5_000,
   });
   expect(spec.args).toContain("--ignore-user-config");
+  expect(spec.args).toContain("--approve-for-me");
+  expect(spec.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+  expect(spec.args).not.toContain("--sandbox");
   expect(spec.args.join(" ")).toContain("mcp_servers.solari.command");
   expect(spec.args).toContain(
     `mcp_servers.solari.command=${JSON.stringify(process.execPath)}`,
@@ -125,6 +128,9 @@ test("generator attaches only the Solari MCP server", () => {
     'mcp_servers.solari.enabled_tools=["solari_sandbox_create","solari_list","solari_kill","solari_connect","solari_exec","solari_run_command_bg","solari_run_code","solari_read_file","solari_write_file","solari_list_files","solari_get_preview_url"]',
   );
   expect(spec.args.join(" ")).not.toContain("test-solari-key");
+  expect(spec.args.at(-1)).toMatch(/create the mandatory submission files first/i);
+  expect(spec.args.at(-1)).toMatch(/results\.json/i);
+  expect(spec.args.at(-1)).toMatch(/do not verify or polish until/i);
   expect(spec.env?.SOLARI_API_KEY).toBe("test-solari-key");
 });
 

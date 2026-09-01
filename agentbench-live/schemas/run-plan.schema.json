@@ -18,19 +18,45 @@
       "type": "object",
       "properties": {
         "browser": {
-          "type": "string",
-          "minLength": 3
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 3
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "sandbox": {
-          "type": "string",
-          "minLength": 3
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 3
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "desktop": {
-          "type": "string",
-          "minLength": 3
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 3
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "browser",
+        "sandbox",
+        "desktop"
+      ]
     },
     "verificationStrategy": {
       "type": "string",
