@@ -7,6 +7,7 @@ import type { RunEventBus } from "@/core/events/run-events";
 import type { RunRepository } from "@/core/persistence/repository";
 import type { SubmissionPackage } from "@/core/security/package-submission";
 import type { DisposableWorkspace } from "@/core/security/workspace";
+import type { SolariServices } from "@/core/solari/contracts";
 import type { ScoreBreakdown } from "./scoring";
 
 export type RunRequest = { taskId: string; agentId: string };
@@ -60,4 +61,5 @@ export type OrchestratorDependencies = {
   ): Promise<SubmissionPackage>;
   schemaPath: string;
   solariApiKey: string;
+  generationResources?: { services: SolariServices };
 };

@@ -12,6 +12,11 @@ import type { AgentConfig } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
 import { redact } from "@/core/security/redact";
 import type { DisposableWorkspace } from "@/core/security/workspace";
+import {
+  captureInventory,
+  ResourceSupervisor,
+  trackGeneratedResources,
+} from "@/core/solari/resource-supervisor";
 import { transition } from "./state-machine";
 import type {
   DryRunReport,
@@ -57,7 +62,7 @@ export class AgentBenchOrchestrator {
 
       workspace = await this.dependencies.createWorkspace(run.id);
       run = this.move(run, "generating");
-      await this.dependencies.generator.generate({
+      await this.generate(run, {
         agent,
         plan,
         taskPrompt: task.prompt,
@@ -195,6 +200,25 @@ export class AgentBenchOrchestrator {
   }
 
   private failureCode(error: unknown, stage: RunStage): FailureCode {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      [
+        "plan_invalid",
+        "agent_timeout",
+        "agent_failed",
+        "submission_invalid",
+        "provision_failed",
+        "build_failed",
+        "verification_failed",
+        "evidence_failed",
+        "cleanup_failed",
+      ].includes(error.code)
+    ) {
+      return error.code as FailureCode;
+    }
     if (error instanceof PlanInvalidError) return "plan_invalid";
     if (error instanceof AgentTimeoutError) return "agent_timeout";
     if (error instanceof AgentProcessError || stage === "generating") {
@@ -211,5 +235,63 @@ export class AgentBenchOrchestrator {
     const run = this.dependencies.repository.get(id);
     if (!run) throw new Error(`Run disappeared from repository: ${id}`);
     return run;
+  }
+
+  private async generate(
+    run: RunRecord,
+    input: Parameters<OrchestratorDependencies["generator"]["generate"]>[0],
+  ): Promise<void> {
+    const resources = this.dependencies.generationResources;
+    if (!resources) {
+      await this.dependencies.generator.generate(input);
+      return;
+    }
+
+    const before = await captureInventory(resources.services);
+    let generationEvents: Awaited<
+      ReturnType<OrchestratorDependencies["generator"]["generate"]>
+    >["events"] = [];
+    let primaryError: unknown;
+    try {
+      generationEvents = (await this.dependencies.generator.generate(input)).events;
+    } catch (error) {
+      primaryError = error;
+    }
+
+    try {
+      const after = await captureInventory(resources.services);
+      const supervisor = new ResourceSupervisor();
+      trackGeneratedResources({
+        before,
+        after,
+        events: generationEvents,
+        services: resources.services,
+        supervisor,
+      });
+      for (const issue of await supervisor.cleanup()) {
+        this.recordCleanupIssue(run.id, issue.detail);
+      }
+    } catch (error) {
+      const detail = `generation resource inventory: ${error instanceof Error ? error.message : String(error)}`;
+      this.recordCleanupIssue(run.id, detail);
+      if (!primaryError) primaryError = new AgentProcessError(detail);
+    }
+
+    if (primaryError) throw primaryError;
+  }
+
+  private recordCleanupIssue(runId: string, detail: string): void {
+    const current = this.requireRun(runId);
+    this.dependencies.repository.update(runId, {
+      cleanupIssues: [
+        ...(current.cleanupIssues ?? []),
+        { code: "cleanup_failed", detail },
+      ],
+    });
+    const event = this.dependencies.repository.appendEvent(runId, {
+      kind: "cleanup",
+      payload: { code: "cleanup_failed", detail },
+    });
+    this.dependencies.events.publish(runId, event);
   }
 }

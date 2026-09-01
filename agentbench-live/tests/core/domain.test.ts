@@ -52,7 +52,10 @@ test("fails closed when a plan requests a forbidden primitive", () => {
   ).toThrow(/desktop is not allowed/);
 });
 
-test("the empty registry fails closed for unknown tasks", () => {
-  expect(listTasks()).toEqual([]);
+test("the registry exposes only the two versioned MVP tasks", () => {
+  expect(listTasks().map((registered) => registered.id)).toEqual([
+    "url-shortener",
+    "same-stats-different-graph",
+  ]);
   expect(() => getTask("unknown")).toThrow(/unknown task/i);
 });
