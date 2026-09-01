@@ -176,6 +176,23 @@ test("persists the complete successful lifecycle and score", async () => {
   harness.repository.close();
 });
 
+test("creates a durable queued run before executing that same record", async () => {
+  const harness = createHarness();
+  const request = { taskId: "url-shortener", agentId: "sol-low" };
+
+  const queued = harness.orchestrator.create(request);
+  expect(queued).toMatchObject({
+    taskId: request.taskId,
+    agentId: request.agentId,
+    stage: "queued",
+  });
+
+  const completed = await harness.orchestrator.runCreated(queued.id, request);
+  expect(completed).toMatchObject({ id: queued.id, stage: "completed" });
+  expect(harness.repository.list()).toHaveLength(1);
+  harness.repository.close();
+});
+
 test("records cleanup failure without overwriting a completed result", async () => {
   const harness = createHarness({ disposeError: new Error("locked") });
   const run = await harness.orchestrator.run({

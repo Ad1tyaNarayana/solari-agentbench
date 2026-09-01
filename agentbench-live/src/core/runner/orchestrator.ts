@@ -42,15 +42,33 @@ export class AgentBenchOrchestrator {
   }
 
   async run(request: RunRequest): Promise<RunRecord> {
+    const created = this.create(request);
+    return this.runCreated(created.id, request);
+  }
+
+  create(request: RunRequest): RunRecord {
     const task = this.dependencies.getTask(request.taskId);
     const agent = this.dependencies.getAgent(request.agentId);
-    const created = this.dependencies.repository.create({
+    return this.dependencies.repository.create({
       taskId: task.id,
       taskVersion: task.version,
       agentId: agent.id,
       model: agent.model,
       reasoningEffort: agent.reasoningEffort,
     });
+  }
+
+  async runCreated(id: string, request: RunRequest): Promise<RunRecord> {
+    const task = this.dependencies.getTask(request.taskId);
+    const agent = this.dependencies.getAgent(request.agentId);
+    const created = this.requireRun(id);
+    if (
+      created.stage !== "queued" ||
+      created.taskId !== task.id ||
+      created.agentId !== agent.id
+    ) {
+      throw new Error(`Run ${id} is not the matching queued run`);
+    }
     const startedAt = new Date().toISOString();
     let run = this.dependencies.repository.update(created.id, { startedAt });
     let workspace: DisposableWorkspace | undefined;
