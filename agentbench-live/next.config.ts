@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: [
+    "@solarisdk/browser",
+    "@solarisdk/sandbox",
+    "@solarisdk/desktop",
+  ],
 };
 
 export default nextConfig;

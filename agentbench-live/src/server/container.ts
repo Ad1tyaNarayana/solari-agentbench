@@ -35,29 +35,39 @@ function selectionError(error: unknown): never {
 }
 
 export function createServerContainer(): RunApiPort {
-  const databasePath =
+  const configuredDatabasePath =
     process.env.AGENTBENCH_DATABASE_PATH ?? ".agentbench/agentbench.sqlite";
-  mkdirSync(dirname(resolve(databasePath)), { recursive: true });
+  const databasePath = resolve(
+    /* turbopackIgnore: true */ configuredDatabasePath,
+  );
+  mkdirSync(dirname(databasePath), { recursive: true });
   const repository = new SqliteRunRepository(databasePath);
   const events = new RunEventBus();
   const runner = new SpawnCommandRunner();
-  const services = createSolariServices(process.env.SOLARI_API_KEY ?? "");
   const queue = new RunQueue(1);
-  const orchestrator = new AgentBenchOrchestrator({
-    repository,
-    events,
-    planner: new CodexPlanner(runner),
-    generator: new CodexGenerator(runner),
-    verifier: new VerifierRegistry(services),
-    getTask,
-    getAgent,
-    createWorkspace,
-    packageSubmission: (workspace) =>
-      packageSubmission(workspace, defaultSubmissionPolicy),
-    schemaPath: resolve("schemas/run-plan.schema.json"),
-    solariApiKey: process.env.SOLARI_API_KEY ?? "",
-    generationResources: { services },
-  });
+  let orchestrator: AgentBenchOrchestrator | undefined;
+
+  function executionOrchestrator(): AgentBenchOrchestrator {
+    if (orchestrator) return orchestrator;
+    const solariApiKey = process.env.SOLARI_API_KEY ?? "";
+    const services = createSolariServices(solariApiKey);
+    orchestrator = new AgentBenchOrchestrator({
+      repository,
+      events,
+      planner: new CodexPlanner(runner),
+      generator: new CodexGenerator(runner),
+      verifier: new VerifierRegistry(services),
+      getTask,
+      getAgent,
+      createWorkspace,
+      packageSubmission: (workspace) =>
+        packageSubmission(workspace, defaultSubmissionPolicy),
+      schemaPath: resolve("schemas/run-plan.schema.json"),
+      solariApiKey,
+      generationResources: { services },
+    });
+    return orchestrator;
+  }
 
   async function submit(
     request: RunRequest & { dryRun?: boolean },
@@ -71,7 +81,10 @@ export function createServerContainer(): RunApiPort {
     }
 
     if (request.dryRun) {
-      return { kind: "dry-run", report: await orchestrator.dryRun(request) };
+      return {
+        kind: "dry-run",
+        report: await executionOrchestrator().dryRun(request),
+      };
     }
 
     const preflight = await runPreflight(agent, { runner, env: process.env });
@@ -79,8 +92,9 @@ export function createServerContainer(): RunApiPort {
       throw new RunApiError("preflight_failed", preflight.detailCode);
     }
 
-    const run = orchestrator.create(request);
-    void queue.enqueue(() => orchestrator.runCreated(run.id, request)).catch(() => {
+    const activeOrchestrator = executionOrchestrator();
+    const run = activeOrchestrator.create(request);
+    void queue.enqueue(() => activeOrchestrator.runCreated(run.id, request)).catch(() => {
       // The orchestrator persists execution failures. This catch prevents an
       // intentionally detached background job from becoming an unhandled promise.
     });
