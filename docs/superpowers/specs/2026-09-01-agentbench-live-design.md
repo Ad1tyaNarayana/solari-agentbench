@@ -9,9 +9,9 @@ submission in fresh Solari infrastructure. The scoreboard reports observed
 builds, assertions, numerical findings, recordings, screenshots, and logs
 rather than trusting an agent's claim that it finished.
 
-The first release is a hybrid benchmark with one web application task, one
-computational-replication task, and one research-paper replication task. It is
-implemented as a TypeScript application inside the public Solari cookbook fork.
+The first release is a hybrid benchmark with one web application task and one
+computational-replication task. It is implemented as a TypeScript application
+inside the public Solari cookbook fork.
 
 ## Goals
 
@@ -114,6 +114,48 @@ Primitive choice affects the agent's tools, but not the verifier's authority.
 A task verifier may independently require a clean sandbox or browser even when
 the agent did not use one while solving the task.
 
+### Planner Implementation
+
+The planning call and the generating call are two separate `codex exec`
+invocations, not one call with a schema hint:
+
+```bash
+# 1. Planning — schema-constrained, no MCP servers registered
+codex exec --ephemeral --json --skip-git-repo-check \
+  --output-schema ./schemas/run-plan.schema.json \
+  -o /tmp/plan.json \
+  "$(cat planner-prompt.txt)"
+```
+
+No Solari MCP server is attached to this call. That's a structural choice, not
+a prompted one: `--output-schema` is silently ignored by the Codex CLI once any
+MCP server or tool is present in the same invocation (a currently open upstream
+issue, producing malformed JSON — missing braces, unquoted keys, stray
+markdown fences). Leaving Solari's tools out of the planning call both avoids
+that failure mode and guarantees no billable resource can be created before a
+plan is approved, since the tool that would create one isn't registered yet.
+
+```ts
+const raw = fs.readFileSync("/tmp/plan.json", "utf-8")
+const result = RunPlanSchema.safeParse(JSON.parse(raw))
+if (!result.success) {
+  // one retry: same command, validation error appended to the prompt
+  // second failure -> plan_invalid; nothing has been provisioned yet
+}
+validatePrimitivesAgainstManifest(result.data, task) // fail closed on anything outside the task's allow-list
+```
+
+The JSON Schema passed to `--output-schema` is generated from the same Zod
+schema used for runtime validation (`zod-to-json-schema` or equivalent), so the
+CLI-level constraint and the runtime check can't drift apart.
+
+```bash
+# 2. Generating — only after the plan validates, MCP now attached
+codex exec --ephemeral --json --skip-git-repo-check \
+  -c mcp_servers.solari.command="npx @solarisdk/mcp" \
+  "$(cat task-prompt.txt)"
+```
+
 ## Run Lifecycle
 
 Each job represents one agent configuration and one task.
@@ -125,7 +167,11 @@ queued -> planning -> generating -> provisioning -> building
 ```
 
 1. Load a versioned task manifest and create a run record.
-2. Run a planning-only Codex invocation and validate its `RunPlan`.
+2. Run a planning-only Codex invocation with no Solari MCP configuration
+   attached, constrained by `--output-schema` against the `RunPlan` schema,
+   and validate the result against the same schema at runtime; retry once with
+   the validation error appended, then fail closed as `plan_invalid` before
+   any resource is created.
 3. Create a disposable local Git workspace.
 4. Run Codex with the verbatim task prompt, approved plan, fixed model,
    reasoning effort, time limit, and run-scoped Solari MCP configuration.
@@ -173,8 +219,10 @@ Agent execution and grading are intentionally separate.
 
 Codex runs locally with `codex exec --ephemeral --json` and the user's existing
 ChatGPT sign-in. The run receives the official Solari MCP server through a
-temporary configuration. `SOLARI_API_KEY` is inherited by the MCP subprocess
-from the orchestrator environment and is never written into repository files.
+temporary configuration, attached only after the plan is approved (see
+Planner Implementation above). `SOLARI_API_KEY` is inherited by the MCP
+subprocess from the orchestrator environment and is never written into
+repository files.
 
 The agent may use Solari for source retrieval, exploratory computation, GUI
 inspection, and prototyping. It must still save a complete submission locally.
@@ -203,10 +251,10 @@ and redirects the short URL to the original destination. The verifier:
 
 - Builds and starts the app in a Solari sandbox.
 - Obtains a public preview URL.
-- Opens a recorded Solari browser.
-- Creates a short URL through the UI.
-- Visits it and confirms the final destination.
-- Captures browser assertions and a screenshot.
+- Opens a recorded Solari browser, creates a short URL through the UI, visits
+  it, confirms the final destination, and captures browser assertions.
+- Opens the same preview URL on a Solari desktop and captures the canonical
+  evidence screenshot shown on the scoreboard.
 
 ### 2. Same Stats, Different Graph
 
@@ -222,22 +270,6 @@ plot, and machine-readable statistics. The verifier independently checks:
 - Target-shape error using a task-owned geometric metric.
 - Deterministic reproducibility from the supplied random seed.
 - Successful execution within the CPU and time budget.
-
-### 3. Minimum Wage and Employment
-
-This flagship research task reproduces core results from Card and Krueger's
-1994 New Jersey/Pennsylvania minimum-wage study.
-
-The agent retrieves the paper and public data, documents provenance, recreates
-the Table 3 employment comparisons, estimates the difference-in-differences
-effect, and generates a counterfactual plot. The verifier uses a pinned source
-URL and dataset checksum, explicit missing-data rules, and task-owned numerical
-tolerances. The expected headline estimate is approximately `+2.75` full-time
-equivalent jobs, with the exact expected value fixed by the pinned dataset and
-rules.
-
-The submission includes analysis code, a lockfile, `results.json`, the chart,
-methodology notes, and source provenance.
 
 ## Scoring
 
@@ -262,16 +294,16 @@ obscurity in v1.
 
 ## Initial Agent Matrix
 
-The first published matrix targets three Codex model configurations: Sol, Terra,
-and Luna, all at the same medium reasoning effort where supported. The runner
-resolves and records the exact model identifier before each run. If a configured
-model is unavailable to the active ChatGPT subscription or installed Codex CLI,
-the run fails with a typed configuration error; it never substitutes another
-model silently.
+The first published matrix targets two Codex model configurations chosen for
+contrast rather than adjacency: Sol at low reasoning effort and Luna at high
+reasoning effort. The runner resolves and records the exact model identifier
+before each run. If a configured model is unavailable to the active ChatGPT
+subscription or installed Codex CLI, the run fails with a typed configuration
+error; it never substitutes another model silently.
 
-All three configurations receive the same task prompt, task version, allowed
-Solari primitives, verifier contract, wall-clock limit, and resource budget.
-The adapter boundary permits future Claude Code, Aider, or other agents without
+Both configurations receive the same task prompt, task version, allowed Solari
+primitives, verifier contract, wall-clock limit, and resource budget. The
+adapter boundary permits future Claude Code, Aider, or other agents without
 changing task or verifier implementations.
 
 ## Persistence and Evidence
@@ -381,21 +413,32 @@ failures are not retried automatically.
 - One desktop screenshot.
 - One complete URL-shortener run.
 
-The research tasks run live only after the cheap smoke suite passes.
+The research task runs live only after the cheap smoke suite passes.
 
 ## Intentional Changes from the Initial Handoff
 
 The following changes preserve the handoff's product concept while adapting it
-to the available account and MVP scope:
+to the available account, MVP scope, and build timeline:
 
 - Codex runs locally so ChatGPT subscription authentication never enters a
   remote sandbox.
 - SQLite replaces Postgres.
 - An in-process queue replaces BullMQ and Redis.
-- A structured primitive-selection step gives agents discretionary Solari use.
-- The task suite becomes hybrid rather than three simple web applications.
-- Desktop is optional per task, but the published benchmark includes desktop
-  evidence so all three Solari primitives are demonstrated.
+- A structured primitive-selection step gives agents discretionary Solari use,
+  implemented as two separate `codex exec` calls (schema-constrained planning
+  with no MCP attached, then a generating call with MCP attached) rather than
+  one call with a schema hint, to avoid a documented CLI bug where
+  `--output-schema` is ignored once tools are present.
+- The task suite is two tasks (web application, computational replication)
+  rather than three; the paper-replication task is deferred rather than
+  shipped in v1, given both its methodological contestedness and its lack of
+  browser/desktop coverage.
+- The initial agent matrix compares two Codex configurations chosen for
+  contrast (low vs. high reasoning effort) rather than three adjacent tiers,
+  to fit a compressed build timeline.
+- Desktop evidence now lives explicitly in the URL Shortener verifier (a
+  canonical screenshot of the deployed app), so all three Solari primitives
+  are demonstrated even with the paper-replication task deferred.
 
 One job still represents one agent configuration and one task. Sandboxes build
 and execute code, preview URLs feed browser verification, browser sessions are
@@ -409,7 +452,7 @@ The MVP is complete when:
 - A clean checkout can install and start the dashboard and orchestrator.
 - The runner detects an existing local Codex ChatGPT login and a Solari API key
   without persisting either credential.
-- All three task types can execute through their complete lifecycle.
+- Both task types can execute through their complete lifecycle.
 - Agents can select allowed Solari primitives through a validated plan.
 - Every score derives from fresh, independent Solari verification.
 - Unit, verifier, integration, and live smoke tests pass.
@@ -427,6 +470,6 @@ The MVP is complete when:
 - Solari browsers: <https://docs.getsolari.com/browser-api>
 - Solari desktops: <https://docs.getsolari.com/desktops>
 - Same Stats, Different Graphs: <https://www.research.autodesk.com/publications/same-stats-different-graphs/>
-- Card and Krueger paper: <https://esp.mit.edu/download/a1c6c55a9e61a353bced61b2b4725bca/S2790_Card_Krueger_1994.pdf>
 - OpenAI Codex authentication: <https://developers.openai.com/codex/auth>
 - OpenAI Codex pricing: <https://developers.openai.com/codex/pricing>
+- OpenAI Codex CLI reference (`--output-schema`, `--ephemeral`, `--json`): <https://developers.openai.com/codex/cli/reference>
