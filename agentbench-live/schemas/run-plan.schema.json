@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "primitives": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "browser",
+          "sandbox",
+          "desktop"
+        ]
+      }
+    },
+    "reason": {
+      "type": "object",
+      "properties": {
+        "browser": {
+          "type": "string",
+          "minLength": 3
+        },
+        "sandbox": {
+          "type": "string",
+          "minLength": 3
+        },
+        "desktop": {
+          "type": "string",
+          "minLength": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "verificationStrategy": {
+      "type": "string",
+      "minLength": 3
+    }
+  },
+  "required": [
+    "primitives",
+    "reason",
+    "verificationStrategy"
+  ],
+  "additionalProperties": false
+}
