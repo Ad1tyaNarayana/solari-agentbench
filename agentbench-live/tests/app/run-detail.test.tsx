@@ -45,6 +45,25 @@ test("renders primitive rationale and expected-versus-observed evidence", () => 
   expect(screen.getByRole("img", { name: /comparison plot/i })).toBeInTheDocument();
 });
 
+test("renders loading and preflight without removing historical lifecycle stages", () => {
+  render(<StageTimeline run={{ ...researchRun, stage: "preflight" }} />);
+
+  expect(
+    screen.getAllByRole("listitem").map((item) => item.textContent),
+  ).toEqual([
+    "queued",
+    "loading",
+    "preflight",
+    "planning",
+    "generating",
+    "provisioning",
+    "building",
+    "verifying",
+    "capturing",
+    "completed",
+  ]);
+});
+
 test("keeps canonical screenshots visible when a replay has expired", () => {
   const run: RunRecord = {
     ...researchRun,

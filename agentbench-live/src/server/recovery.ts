@@ -6,6 +6,7 @@ import { redact } from "@/core/security/redact";
 const terminalStages = new Set<RunStage>(["completed", "failed"]);
 
 function recoveryFailureCode(stage: RunStage): FailureCode {
+  if (stage === "loading" || stage === "preflight") return "preflight_failed";
   if (stage === "provisioning") return "provision_failed";
   if (stage === "building") return "build_failed";
   if (stage === "verifying") return "verification_failed";

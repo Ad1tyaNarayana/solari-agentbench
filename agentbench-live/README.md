@@ -24,6 +24,8 @@ They solve two tasks: a complete URL Shortener application and a deterministic r
 ## Architecture
 
 ```text
+benchmark files ──> immutable snapshot ──> provider preflight
+                                             │
 Next.js dashboard ──> in-process queue ──> planning-only Codex call
         │                                      │
         │                               validated RunPlan
@@ -59,6 +61,7 @@ Set `SOLARI_API_KEY` in `.env.local` for the Next.js dashboard. For CLI commands
 ```powershell
 $env:SOLARI_API_KEY = "your-key-from-console.getsolari.com"
 $env:AGENTBENCH_DATABASE_PATH = ".agentbench/agentbench.sqlite"
+$env:AGENTBENCH_SNAPSHOT_PATH = ".agentbench/snapshots"
 ```
 
 Then verify the local ChatGPT login without printing any token:
@@ -69,6 +72,34 @@ npm run dev
 ```
 
 Open <http://localhost:3000>. With an empty database the dashboard displays a clearly labeled representative four-cell demo; persisted local runs take precedence as soon as one exists.
+
+## Benchmark packs
+
+Benchmark packs are canonical, version-controlled folders. The bundled tutorial is at `benchmarks/tutorials/agentbench-live`:
+
+```text
+agentbench-live/
+  benchmark.yaml
+  agents.yaml
+  tasks/
+    url-shortener/
+      task.yaml
+      prompt.md
+    same-stats-different-graph/
+      task.yaml
+      prompt.md
+      fixtures/seed.csv
+```
+
+`benchmark.yaml` declares pack identity and task roots, `agents.yaml` declares provider/model/harness identity, and each task owns its prompt, fixtures, evaluator declarations, and compatibility policy. Every run loads the complete pack into a content-addressed snapshot before provider preflight. Source edits after launch therefore affect only future runs. Snapshots default to `.agentbench/snapshots`; override that gitignored working location with `AGENTBENCH_SNAPSHOT_PATH`.
+
+To discover additional packs, set `AGENTBENCH_BENCHMARK_ROOTS` to a platform-delimited list of pack roots. Use `;` on Windows and `:` on macOS/Linux:
+
+```powershell
+$env:AGENTBENCH_BENCHMARK_ROOTS = "benchmarks/tutorials/agentbench-live;D:\benchmarks\my-pack"
+```
+
+Relative entries resolve from the `agentbench-live` project directory. Surrounding whitespace and empty entries are ignored, duplicate resolved roots keep their first position, and an unset or empty value selects only the bundled tutorial. Invalid packs return a typed `benchmark_invalid` result without exposing configured absolute roots; unknown selections return `unknown_benchmark`, `unknown_task`, or `unknown_agent`.
 
 ## ChatGPT subscription vs API billing
 
@@ -82,6 +113,7 @@ Validate an agent’s primitive plan and estimate the maximum resource time with
 
 ```powershell
 npm run agentbench -- dry-run --task url-shortener --agent sol-low
+npm run agentbench -- dry-run --benchmark agentbench-live --task url-shortener --agent sol-low
 ```
 
 Exercise one sandbox, one recorded browser, and one desktop sequentially; each resource is cleaned before the next begins:
@@ -94,13 +126,14 @@ Run one observed task:
 
 ```powershell
 npm run agentbench -- run --task url-shortener --agent sol-low
-npm run agentbench -- run --task same-stats-different-graph --agent luna-high
+npm run agentbench -- run --benchmark agentbench-live --task same-stats-different-graph --agent luna-high
 ```
 
 Run the complete two-agent by two-task matrix. The command prints the maximum browser, sandbox, desktop, and total time before the required confirmation:
 
 ```powershell
 npm run agentbench -- matrix --concurrency 1 --yes
+npm run agentbench -- matrix --benchmark agentbench-live --concurrency 1 --yes
 ```
 
 Export the sanitized representative demo:

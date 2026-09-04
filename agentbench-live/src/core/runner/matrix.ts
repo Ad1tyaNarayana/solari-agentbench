@@ -4,6 +4,7 @@ import { RunQueue } from "./queue";
 import type { AgentBenchOrchestrator } from "./orchestrator";
 
 export type MatrixOptions = {
+  benchmarkId: string;
   confirm: boolean;
   concurrency: number;
   agents: AgentConfig[];
@@ -21,7 +22,11 @@ export async function runMatrix(
     for (const task of options.tasks) {
       jobs.push(
         queue.enqueue(() =>
-          orchestrator.run({ taskId: task.id, agentId: agent.id }),
+          orchestrator.run({
+            benchmarkId: options.benchmarkId,
+            taskId: task.id,
+            agentId: agent.id,
+          }),
         ),
       );
     }

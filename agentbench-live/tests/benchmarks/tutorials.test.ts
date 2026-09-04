@@ -3,7 +3,10 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BenchmarkCatalog } from "@/core/benchmarks/catalog";
+import {
+  BenchmarkCatalog,
+  BenchmarkSelectionError,
+} from "@/core/benchmarks/catalog";
 import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { agents as legacyAgents } from "@/core/tasks/registry";
 import { sameStatsSeedCsv, sameStatsTask } from "@/core/tasks/same-stats";
@@ -31,6 +34,59 @@ describe("migrated tutorial benchmark", () => {
   });
   it("rejects benchmark collisions across configured roots", async () => {
     const catalog = new BenchmarkCatalog([pack, pack], new BenchmarkLoader(await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-"))));
-    await expect(catalog.discover()).rejects.toThrow(/duplicate benchmark id.*agentbench-live/i);
+    let failure: unknown;
+    try {
+      await catalog.discover();
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: "benchmark_invalid" });
+    expect((failure as Error).message).toMatch(/duplicate benchmark id.*agentbench-live/i);
+    expect((failure as Error).message).not.toContain(pack);
+  });
+
+  it.each([
+    ["missing-benchmark", "url-shortener", "sol-low", "unknown_benchmark"],
+    ["agentbench-live", "missing-task", "sol-low", "unknown_task"],
+    ["agentbench-live", "url-shortener", "missing-agent", "unknown_agent"],
+  ] as const)(
+    "returns a typed selection error for %s / %s / %s",
+    async (benchmarkId, taskId, agentId, code) => {
+      const catalog = new BenchmarkCatalog(
+        [pack],
+        new BenchmarkLoader(
+          await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-")),
+        ),
+      );
+
+      await expect(
+        catalog.resolveSelection({ benchmarkId, taskId, agentId }),
+      ).rejects.toMatchObject({ code });
+    },
+  );
+
+  it("does not expose an invalid benchmark root in selection errors", async () => {
+    const invalidRoot = await mkdtemp(join(tmpdir(), "agentbench-invalid-pack-"));
+    const catalog = new BenchmarkCatalog(
+      [invalidRoot],
+      new BenchmarkLoader(
+        await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-")),
+      ),
+    );
+
+    let failure: unknown;
+    try {
+      await catalog.resolveSelection({
+        benchmarkId: "broken",
+        taskId: "task",
+        agentId: "agent",
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(BenchmarkSelectionError);
+    expect(failure).toMatchObject({ code: "benchmark_invalid" });
+    expect((failure as Error).message).not.toContain(invalidRoot);
   });
 });

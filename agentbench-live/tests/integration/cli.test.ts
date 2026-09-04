@@ -1,12 +1,87 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { expect, test, vi } from "vitest";
 import { runCli, type CliRuntime } from "@/cli";
+import { resolveBenchmarkRoots } from "@/core/benchmarks/config";
+
+test("parses benchmark roots without treating empty entries as the project root", () => {
+  const projectRoot = resolve("C:\\agentbench-project");
+  const roots = resolveBenchmarkRoots(
+    [" packs/second ", "", "packs/first", "packs/second"].join(delimiter),
+    projectRoot,
+  );
+
+  expect(roots).toEqual([
+    resolve(projectRoot, "packs/second"),
+    resolve(projectRoot, "packs/first"),
+  ]);
+});
+
+test("passes an explicit benchmark to dry-run, run, and matrix while defaulting to the tutorial", async () => {
+  const requests: unknown[] = [];
+  const runtime = {
+    async matrixSummary(options: unknown) {
+      requests.push(["summary", options]);
+      return "1 agent × 1 task = 1 run";
+    },
+    async runMatrix(options: unknown) {
+      requests.push(["matrix", options]);
+      return [];
+    },
+    async dryRun(request: unknown) {
+      requests.push(["dry-run", request]);
+      return {} as never;
+    },
+    async runOne(request: unknown) {
+      requests.push(["run", request]);
+      return {} as never;
+    },
+    async smoke() {
+      throw new Error("not used");
+    },
+    writeLine() {},
+    async dispose() {},
+  } satisfies CliRuntime;
+
+  await runCli(
+    [
+      "dry-run",
+      "--benchmark",
+      "custom-bench",
+      "--task",
+      "task-a",
+      "--agent",
+      "agent-a",
+    ],
+    runtime,
+  );
+  await runCli(["run", "--task", "task-a", "--agent", "agent-a"], runtime);
+  await runCli(
+    ["matrix", "--benchmark", "custom-bench", "--concurrency", "1", "--yes"],
+    runtime,
+  );
+
+  expect(requests).toEqual([
+    [
+      "dry-run",
+      { benchmarkId: "custom-bench", taskId: "task-a", agentId: "agent-a" },
+    ],
+    [
+      "run",
+      { benchmarkId: "agentbench-live", taskId: "task-a", agentId: "agent-a" },
+    ],
+    ["summary", { benchmarkId: "custom-bench", concurrency: 1 }],
+    ["matrix", { benchmarkId: "custom-bench", concurrency: 1 }],
+  ]);
+});
 
 test("matrix refuses to start without explicit confirmation", async () => {
   let runs = 0;
   const runtime = {
+    async matrixSummary() {
+      return "2 agents × 2 tasks = 4 runs";
+    },
     async runMatrix() {
       runs += 1;
       return [];
@@ -33,6 +108,12 @@ test("matrix refuses to start without explicit confirmation", async () => {
 test("matrix prints its four-cell resource summary before running", async () => {
   const output: string[] = [];
   const runtime = {
+    async matrixSummary() {
+      return [
+        "2 agents × 2 tasks = 4 runs",
+        "browser · sandbox · desktop",
+      ].join(" · ");
+    },
     async runMatrix() {
       return [];
     },
@@ -59,6 +140,7 @@ test("matrix prints its four-cell resource summary before running", async () => 
 test("demo:seed exports public artifacts without initializing execution", async () => {
   const directory = await mkdtemp(join(tmpdir(), "agentbench-cli-demo-"));
   const runtime = {
+    matrixSummary: vi.fn(async () => "not used"),
     runMatrix: vi.fn(async () => []),
     dryRun: vi.fn(async () => { throw new Error("not used"); }),
     runOne: vi.fn(async () => { throw new Error("not used"); }),

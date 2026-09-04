@@ -1,7 +1,7 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { Primitive } from "@/core/domain/plan";
-import type { AgentDefinition, BenchmarkDefinition, BenchmarkDiagnostic, BenchmarkFileManifest, BenchmarkTaskDefinition, EvaluatorDefinition } from "./types";
+import type { AgentDefinition, BenchmarkDiagnostic, BenchmarkFileManifest, BenchmarkTaskDefinition, EvaluatorDefinition } from "./types";
 import { BenchmarkValidationError } from "./types";
 
 const primitives = z.enum(["browser", "sandbox", "desktop"]);

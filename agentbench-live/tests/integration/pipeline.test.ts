@@ -1,14 +1,24 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { expect, test } from "vitest";
+import { BenchmarkCatalog } from "@/core/benchmarks/catalog";
+import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import type { RunPlan } from "@/core/domain/plan";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
 import type { DisposableWorkspace } from "@/core/security/workspace";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { runMatrix } from "@/core/runner/matrix";
-import { agents, getAgent, listTasks } from "@/core/tasks/registry";
 
 test("runs the complete two-agent by two-task matrix with concurrency one", async () => {
   const repository = new SqliteRunRepository(":memory:");
+  const snapshotsRoot = await mkdtemp(join(tmpdir(), "agentbench-pipeline-snapshots-"));
+  const catalog = new BenchmarkCatalog(
+    [resolve("benchmarks/tutorials/agentbench-live")],
+    new BenchmarkLoader(snapshotsRoot),
+  );
+  const preflightDigests: string[] = [];
   let active = 0;
   let peak = 0;
   const planner = {
@@ -61,12 +71,13 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
     planner,
     generator,
     verifier,
-    getTask: (id) => {
-      const task = listTasks().find((candidate) => candidate.id === id);
-      if (!task) throw new Error(`Unknown task: ${id}`);
-      return task;
+    resolveSelection: (request) => catalog.resolveSelection(request),
+    preflight: async (selection) => {
+      const manifest = JSON.parse(
+        await readFile(join(selection.snapshot.root, "manifest.json"), "utf8"),
+      ) as { digest: string };
+      preflightDigests.push(manifest.digest);
     },
-    getAgent,
     createWorkspace: async (runId): Promise<DisposableWorkspace> => ({
       root: `C:\\temp\\${runId}`,
       async dispose() {},
@@ -81,22 +92,42 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
     solariApiKey: "test-key",
   });
 
-  const records = await runMatrix(orchestrator, {
-    confirm: true,
-    concurrency: 1,
-    agents: [...agents],
-    tasks: listTasks(),
-  });
+  try {
+    const records = await runMatrix(orchestrator, {
+      benchmarkId: "agentbench-live",
+      confirm: true,
+      concurrency: 1,
+      agents: await catalog.listAgents(),
+      tasks: await catalog.listTasks(),
+    });
 
-  expect(records).toHaveLength(4);
-  expect(records.map((run) => [run.agentId, run.taskId])).toEqual(
-    expect.arrayContaining([
-      ["sol-low", "url-shortener"],
-      ["sol-low", "same-stats-different-graph"],
-      ["luna-high", "url-shortener"],
-      ["luna-high", "same-stats-different-graph"],
-    ]),
-  );
-  expect(peak).toBe(1);
-  repository.close();
+    expect(records).toHaveLength(4);
+    expect(records.map((run) => [run.agentId, run.taskId])).toEqual(
+      expect.arrayContaining([
+        ["sol-low", "url-shortener"],
+        ["sol-low", "same-stats-different-graph"],
+        ["luna-high", "url-shortener"],
+        ["luna-high", "same-stats-different-graph"],
+      ]),
+    );
+    expect(preflightDigests).toHaveLength(4);
+    expect(new Set(preflightDigests)).toEqual(
+      new Set(records.map((run) => run.benchmarkDigest)),
+    );
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          benchmarkId: "agentbench-live",
+          benchmarkVersion: "1.0.0",
+          providerId: "codex",
+          harnessId: "codex-sdk",
+          harnessVersion: "local",
+        }),
+      ]),
+    );
+    expect(peak).toBe(1);
+  } finally {
+    repository.close();
+    await rm(snapshotsRoot, { recursive: true, force: true });
+  }
 });

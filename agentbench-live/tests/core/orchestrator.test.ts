@@ -1,4 +1,6 @@
 import { expect, test } from "vitest";
+import type { BenchmarkSnapshot } from "@/core/benchmarks/snapshot";
+import type { BenchmarkDefinition } from "@/core/benchmarks/types";
 import type { RunPlan } from "@/core/domain/plan";
 import type { AgentConfig } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
@@ -8,6 +10,7 @@ import type { DisposableWorkspace } from "@/core/security/workspace";
 import type {
   GeneratorPort,
   PlannerPort,
+  RunSelection,
   VerifierRegistryPort,
 } from "@/core/runner/contracts";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
@@ -35,6 +38,37 @@ const agent: AgentConfig = {
   reasoningEffort: "low",
 };
 
+const benchmark: BenchmarkDefinition = {
+  schemaVersion: 1,
+  id: "agentbench-live",
+  name: "AgentBench Live",
+  version: "1.0.0",
+  root: "C:\\benchmarks\\agentbench-live",
+  defaults: {
+    timeoutSeconds: 300,
+    maxConcurrency: 1,
+    submissionDirectory: "submission",
+  },
+  tasks: [],
+  agents: [
+    {
+      id: agent.id,
+      name: agent.label,
+      provider: "codex",
+      model: agent.model,
+      reasoningEffort: agent.reasoningEffort,
+      harness: { id: "codex-sdk", version: "local" },
+      options: {},
+    },
+  ],
+};
+
+const snapshot: BenchmarkSnapshot = {
+  digest: "snapshot-digest",
+  root: "C:\\snapshots\\snapshot-digest",
+  files: [],
+};
+
 const plan: RunPlan = {
   primitives: ["sandbox", "browser"],
   reason: { sandbox: "build app", browser: "inspect behavior" },
@@ -60,6 +94,12 @@ function createHarness(options: {
   lateGenerationResourceMs?: number;
   cleanupGraceMs?: number;
   afterDispose?: () => void;
+  resolveSelection?: (request: {
+    benchmarkId?: string;
+    taskId: string;
+    agentId: string;
+  }) => Promise<RunSelection>;
+  selectionError?: Error;
 } = {}) {
   const repository = new SqliteRunRepository(":memory:");
   const events = new RunEventBus();
@@ -188,6 +228,8 @@ function createHarness(options: {
     },
   };
   let workspaceCalls = 0;
+  let selectionCalls = 0;
+  const preflightSelections: RunSelection[] = [];
   let sandboxLists = 0;
   let desktopLists = 0;
   const generationResources =
@@ -238,8 +280,16 @@ function createHarness(options: {
     planner,
     generator,
     verifier,
-    getTask: () => activeTask,
-    getAgent: () => agent,
+    resolveSelection: async (request) => {
+      selectionCalls += 1;
+      if (options.selectionError) throw options.selectionError;
+      return options.resolveSelection
+        ? options.resolveSelection(request)
+        : { benchmark, snapshot, task: activeTask, agent };
+    },
+    preflight: async (selection) => {
+      preflightSelections.push(selection);
+    },
     createWorkspace: async () => {
       workspaceCalls += 1;
       return workspace;
@@ -275,6 +325,10 @@ function createHarness(options: {
     get sandboxLists() {
       return sandboxLists;
     },
+    get selectionCalls() {
+      return selectionCalls;
+    },
+    preflightSelections,
   };
 }
 
@@ -321,6 +375,8 @@ test("persists the complete successful lifecycle and score", async () => {
   });
   expect(run).toMatchObject({ stage: "completed", score: { total: 100 } });
   expect(seen).toEqual([
+    "loading",
+    "preflight",
     "planning",
     "generating",
     "provisioning",
@@ -338,20 +394,97 @@ test("persists the complete successful lifecycle and score", async () => {
   harness.repository.close();
 });
 
-test("creates a durable queued run before executing that same record", async () => {
+test("creates a durable loading run with snapshot and provider identity before executing it", async () => {
   const harness = createHarness();
-  const request = { taskId: "url-shortener", agentId: "sol-low" };
+  const request = {
+    benchmarkId: "agentbench-live",
+    taskId: "url-shortener",
+    agentId: "sol-low",
+  };
 
-  const queued = harness.orchestrator.create(request);
-  expect(queued).toMatchObject({
+  const created = await harness.orchestrator.create(request);
+  expect(created.run).toMatchObject({
     taskId: request.taskId,
     agentId: request.agentId,
-    stage: "queued",
+    stage: "loading",
+    benchmarkId: "agentbench-live",
+    benchmarkVersion: "1.0.0",
+    benchmarkDigest: "snapshot-digest",
+    snapshotPath: "C:\\snapshots\\snapshot-digest",
+    providerId: "codex",
+    harnessId: "codex-sdk",
+    harnessVersion: "local",
   });
 
-  const completed = await harness.orchestrator.runCreated(queued.id, request);
-  expect(completed).toMatchObject({ id: queued.id, stage: "completed" });
+  const completed = await harness.orchestrator.runCreated(
+    created.run.id,
+    created.selection,
+  );
+  expect(completed).toMatchObject({ id: created.run.id, stage: "completed" });
   expect(harness.repository.list()).toHaveLength(1);
+  harness.repository.close();
+});
+
+test("passes the exact selection created from the snapshot through preflight, planning, and generation", async () => {
+  let sourcePrompt = "Prompt captured before the source edit.";
+  let selected: RunSelection | undefined;
+  const harness = createHarness({
+    resolveSelection: async () => {
+      selected = {
+        benchmark,
+        snapshot,
+        task: { ...task, prompt: sourcePrompt },
+        agent,
+      };
+      return selected;
+    },
+  });
+
+  const created = await harness.orchestrator.create({
+    benchmarkId: "agentbench-live",
+    taskId: task.id,
+    agentId: agent.id,
+  });
+  sourcePrompt = "Prompt edited after create().";
+  const completed = await harness.orchestrator.runCreated(
+    created.run.id,
+    created.selection,
+  );
+
+  expect(completed.stage).toBe("completed");
+  expect(harness.selectionCalls).toBe(1);
+  expect(created.selection).toBe(selected);
+  expect(harness.preflightSelections).toEqual([created.selection]);
+  expect(harness.planner.calls[0]).toMatchObject({
+    task: { prompt: "Prompt captured before the source edit." },
+  });
+  expect(harness.generator.calls[0]).toMatchObject({
+    taskPrompt: "Prompt captured before the source edit.",
+  });
+  harness.repository.close();
+});
+
+test("does not create a run or invoke provider and Solari ports when benchmark loading fails", async () => {
+  const harness = createHarness({
+    selectionError: new Error("benchmark_invalid"),
+    generationResourceViolation: true,
+  });
+
+  await expect(
+    harness.orchestrator.create({
+      benchmarkId: "broken-pack",
+      taskId: task.id,
+      agentId: agent.id,
+    }),
+  ).rejects.toThrow(/benchmark_invalid/);
+
+  expect(harness.repository.list()).toHaveLength(0);
+  expect(harness.preflightSelections).toHaveLength(0);
+  expect(harness.planner.calls).toHaveLength(0);
+  expect(harness.generator.calls).toHaveLength(0);
+  expect(harness.verifier.calls).toHaveLength(0);
+  expect(harness.workspaceCalls).toBe(0);
+  expect(harness.sandboxLists).toBe(0);
   harness.repository.close();
 });
 

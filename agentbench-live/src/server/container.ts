@@ -6,6 +6,15 @@ import { CodexGenerator } from "@/core/agents/codex-generator";
 import { CodexPlanner } from "@/core/agents/codex-planner";
 import { runPreflight } from "@/core/agents/preflight";
 import { SpawnCommandRunner } from "@/core/agents/process";
+import {
+  BenchmarkCatalog,
+  BenchmarkSelectionError,
+} from "@/core/benchmarks/catalog";
+import {
+  resolveBenchmarkRoots,
+  resolveSnapshotRoot,
+} from "@/core/benchmarks/config";
+import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
 import {
@@ -17,7 +26,6 @@ import type { RunRequest } from "@/core/runner/contracts";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { RunQueue } from "@/core/runner/queue";
 import { createSolariServices } from "@/core/solari/clients";
-import { getAgent, getTask } from "@/core/tasks/registry";
 import { VerifierRegistry } from "@/core/verifiers/registry";
 import {
   RunApiError,
@@ -31,12 +39,8 @@ import {
 } from "./recovery";
 
 function selectionError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith("Unknown task:")) {
-    throw new RunApiError("unknown_task", message);
-  }
-  if (message.startsWith("Unknown agent:")) {
-    throw new RunApiError("unknown_agent", message);
+  if (error instanceof BenchmarkSelectionError) {
+    throw new RunApiError(error.code, error.message);
   }
   throw error;
 }
@@ -53,6 +57,12 @@ export function createServerContainer(): RunApiPort {
   const events = new RunEventBus();
   const runner = new SpawnCommandRunner();
   const queue = new RunQueue(1);
+  const catalog = new BenchmarkCatalog(
+    resolveBenchmarkRoots(process.env.AGENTBENCH_BENCHMARK_ROOTS),
+    new BenchmarkLoader(
+      resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH),
+    ),
+  );
   let orchestrator: AgentBenchOrchestrator | undefined;
 
   function executionOrchestrator(): AgentBenchOrchestrator {
@@ -65,8 +75,16 @@ export function createServerContainer(): RunApiPort {
       planner: new CodexPlanner(runner),
       generator: new CodexGenerator(runner),
       verifier: new VerifierRegistry(services),
-      getTask,
-      getAgent,
+      resolveSelection: (request) => catalog.resolveSelection(request),
+      preflight: async (selection) => {
+        const result = await runPreflight(selection.agent, {
+          runner,
+          env: process.env,
+        });
+        if (!result.ok) {
+          throw new RunApiError("preflight_failed", result.detailCode);
+        }
+      },
       createWorkspace,
       packageSubmission: (workspace) =>
         packageSubmission(workspace, defaultSubmissionPolicy),
@@ -80,39 +98,32 @@ export function createServerContainer(): RunApiPort {
   async function submit(
     request: RunRequest & { dryRun?: boolean },
   ): Promise<RunSubmission> {
-    let agent;
     try {
-      getTask(request.taskId);
-      agent = getAgent(request.agentId);
+      if (request.dryRun) {
+        return {
+          kind: "dry-run",
+          report: await executionOrchestrator().dryRun(request),
+        };
+      }
+
+      const activeOrchestrator = executionOrchestrator();
+      const created = await activeOrchestrator.create(request);
+      void queue
+        .enqueue(() =>
+          activeOrchestrator.runCreated(created.run.id, created.selection),
+        )
+        .catch((error) => {
+          persistDetachedQueueFailure({
+            repository,
+            events,
+            runId: created.run.id,
+            error,
+          });
+        });
+      return { kind: "run", run: created.run };
     } catch (error) {
       return selectionError(error);
     }
-
-    if (request.dryRun) {
-      return {
-        kind: "dry-run",
-        report: await executionOrchestrator().dryRun(request),
-      };
-    }
-
-    const preflight = await runPreflight(agent, { runner, env: process.env });
-    if (!preflight.ok) {
-      throw new RunApiError("preflight_failed", preflight.detailCode);
-    }
-
-    const activeOrchestrator = executionOrchestrator();
-    const run = activeOrchestrator.create(request);
-    void queue
-      .enqueue(() => activeOrchestrator.runCreated(run.id, request))
-      .catch((error) => {
-        persistDetachedQueueFailure({
-          repository,
-          events,
-          runId: run.id,
-          error,
-        });
-      });
-    return { kind: "run", run };
   }
 
   return {

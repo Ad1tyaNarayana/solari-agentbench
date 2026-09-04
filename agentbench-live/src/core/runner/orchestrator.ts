@@ -22,17 +22,20 @@ import { transition } from "./state-machine";
 import { applyBudgetOutcome } from "./scoring";
 import type { ScoreBreakdown } from "./scoring";
 import type {
+  CreatedRun,
   DryRunReport,
   OrchestratorDependencies,
   RunRequest,
+  RunSelection,
 } from "./contracts";
 
 export class AgentBenchOrchestrator {
   constructor(private readonly dependencies: OrchestratorDependencies) {}
 
   async dryRun(request: RunRequest): Promise<DryRunReport> {
-    const task = this.dependencies.getTask(request.taskId);
-    const agent = this.dependencies.getAgent(request.agentId);
+    const selection = await this.dependencies.resolveSelection(request);
+    const { task, agent } = selection;
+    await this.dependencies.preflight(selection);
     const now = this.dependencies.now ?? Date.now;
     const deadlineAt = now() + task.budget.totalMs;
     const remainingMs = () => this.remainingMs(deadlineAt, now);
@@ -52,32 +55,55 @@ export class AgentBenchOrchestrator {
   }
 
   async run(request: RunRequest): Promise<RunRecord> {
-    const created = this.create(request);
-    return this.runCreated(created.id, request);
+    const created = await this.create(request);
+    return this.runCreated(created.run.id, created.selection);
   }
 
-  create(request: RunRequest): RunRecord {
-    const task = this.dependencies.getTask(request.taskId);
-    const agent = this.dependencies.getAgent(request.agentId);
-    return this.dependencies.repository.create({
+  async create(request: RunRequest): Promise<CreatedRun> {
+    const selection = await this.dependencies.resolveSelection(request);
+    const { benchmark, snapshot, task, agent } = selection;
+    const agentDefinition = benchmark.agents.find(
+      (candidate) => candidate.id === agent.id,
+    );
+    if (
+      task.id !== request.taskId ||
+      agent.id !== request.agentId ||
+      benchmark.id !== (request.benchmarkId ?? benchmark.id) ||
+      !agentDefinition
+    ) {
+      throw new Error("Resolved selection does not match the run request");
+    }
+    const queued = this.dependencies.repository.create({
       taskId: task.id,
       taskVersion: task.version,
       agentId: agent.id,
       model: agent.model,
       reasoningEffort: agent.reasoningEffort,
+      benchmarkId: benchmark.id,
+      benchmarkVersion: benchmark.version,
+      benchmarkDigest: snapshot.digest,
+      snapshotPath: snapshot.root,
+      providerId: agentDefinition.provider,
+      harnessId: agentDefinition.harness.id,
+      harnessVersion: agentDefinition.harness.version,
     });
+    return {
+      run: this.move(queued, "loading"),
+      selection,
+    };
   }
 
-  async runCreated(id: string, request: RunRequest): Promise<RunRecord> {
-    const task = this.dependencies.getTask(request.taskId);
-    const agent = this.dependencies.getAgent(request.agentId);
+  async runCreated(id: string, selection: RunSelection): Promise<RunRecord> {
+    const { task, agent } = selection;
     const created = this.requireRun(id);
     if (
-      created.stage !== "queued" ||
+      created.stage !== "loading" ||
       created.taskId !== task.id ||
-      created.agentId !== agent.id
+      created.agentId !== agent.id ||
+      created.benchmarkId !== selection.benchmark.id ||
+      created.benchmarkDigest !== selection.snapshot.digest
     ) {
-      throw new Error(`Run ${id} is not the matching queued run`);
+      throw new Error(`Run ${id} is not the matching loading run`);
     }
     const now = this.dependencies.now ?? Date.now;
     const startedMs = now();
@@ -118,6 +144,10 @@ export class AgentBenchOrchestrator {
     );
 
     try {
+      run = this.move(run, "preflight");
+      await runWithDeadline("preflight", () =>
+        this.dependencies.preflight(selection),
+      );
       run = this.move(run, "planning");
       const plan = await runWithDeadline("planning", () =>
         this.plan(run.id, task, agent, remainingMs),
@@ -316,6 +346,7 @@ export class AgentBenchOrchestrator {
       typeof error.code === "string" &&
       [
         "plan_invalid",
+        "preflight_failed",
         "agent_timeout",
         "agent_failed",
         "submission_invalid",
@@ -329,6 +360,7 @@ export class AgentBenchOrchestrator {
       return error.code as FailureCode;
     }
     if (error instanceof PlanInvalidError) return "plan_invalid";
+    if (stage === "preflight") return "preflight_failed";
     if (error instanceof AgentTimeoutError) return "agent_timeout";
     if (error instanceof AgentProcessError || stage === "generating") {
       return "agent_failed";

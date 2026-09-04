@@ -15,8 +15,10 @@ export interface RunApiPort {
 }
 
 export type RunApiErrorCode =
+  | "unknown_benchmark"
   | "unknown_task"
   | "unknown_agent"
+  | "benchmark_invalid"
   | "preflight_failed";
 
 export class RunApiError extends Error {

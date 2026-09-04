@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { RunRecord, RunStage } from "@/core/domain/run";
 
 const failureStages: Partial<Record<NonNullable<RunRecord["failureCode"]>, RunStage>> = {
+  preflight_failed: "preflight",
   plan_invalid: "planning",
   agent_timeout: "generating",
   agent_failed: "generating",

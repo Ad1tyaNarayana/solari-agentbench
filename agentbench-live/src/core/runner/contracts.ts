@@ -1,5 +1,7 @@
 import type { GeneratorInput, GenerationResult } from "@/core/agents/codex-generator";
 import type { PlannerInput } from "@/core/agents/codex-planner";
+import type { BenchmarkSnapshot } from "@/core/benchmarks/snapshot";
+import type { BenchmarkDefinition } from "@/core/benchmarks/types";
 import type { RunPlan } from "@/core/domain/plan";
 import type { AgentConfig, CleanupIssue, RunRecord } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
@@ -10,7 +12,23 @@ import type { DisposableWorkspace } from "@/core/security/workspace";
 import type { SolariServices } from "@/core/solari/contracts";
 import type { ScoreBreakdown } from "./scoring";
 
-export type RunRequest = { taskId: string; agentId: string };
+export type RunRequest = {
+  benchmarkId?: string;
+  taskId: string;
+  agentId: string;
+};
+
+export type RunSelection = {
+  benchmark: BenchmarkDefinition;
+  snapshot: BenchmarkSnapshot;
+  task: TaskManifest;
+  agent: AgentConfig;
+};
+
+export type CreatedRun = {
+  run: RunRecord;
+  selection: RunSelection;
+};
 
 export type DryRunReport = {
   taskId: string;
@@ -68,8 +86,8 @@ export type OrchestratorDependencies = {
   planner: PlannerPort;
   generator: GeneratorPort;
   verifier: VerifierRegistryPort;
-  getTask(id: string): TaskManifest;
-  getAgent(id: string): AgentConfig;
+  resolveSelection(request: RunRequest): Promise<RunSelection>;
+  preflight(selection: RunSelection): Promise<void>;
   createWorkspace(runId: string): Promise<DisposableWorkspace>;
   packageSubmission(
     workspace: Pick<DisposableWorkspace, "root">,

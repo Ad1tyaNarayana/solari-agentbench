@@ -35,6 +35,23 @@ test("reconciles queued and running records left by a previous process", () => {
   repository.close();
 });
 
+test.each(["loading", "preflight"] as const)(
+  "maps an abandoned %s run to preflight failure",
+  (stage) => {
+    const repository = new SqliteRunRepository(":memory:");
+    const run = repository.create({ taskId: "sample", agentId: "sol-low" });
+    repository.update(run.id, { stage });
+
+    reconcileAbandonedRuns(repository);
+
+    expect(repository.get(run.id)).toMatchObject({
+      stage: "failed",
+      failureCode: "preflight_failed",
+    });
+    repository.close();
+  },
+);
+
 test("persists an unexpected detached queue failure and publishes its event", () => {
   const repository = new SqliteRunRepository(":memory:");
   const events = new RunEventBus();

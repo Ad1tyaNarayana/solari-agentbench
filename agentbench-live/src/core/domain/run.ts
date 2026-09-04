@@ -2,6 +2,8 @@ import type { RunPlan } from "./plan";
 
 export type RunStage =
   | "queued"
+  | "loading"
+  | "preflight"
   | "planning"
   | "generating"
   | "provisioning"
@@ -12,6 +14,7 @@ export type RunStage =
   | "failed";
 
 export type FailureCode =
+  | "preflight_failed"
   | "plan_invalid"
   | "agent_timeout"
   | "agent_failed"

@@ -5,7 +5,19 @@ import { CodexGenerator } from "@/core/agents/codex-generator";
 import { CodexPlanner } from "@/core/agents/codex-planner";
 import { runPreflight } from "@/core/agents/preflight";
 import { SpawnCommandRunner } from "@/core/agents/process";
+import {
+  BenchmarkCatalog,
+  BenchmarkSelectionError,
+  DEFAULT_BENCHMARK_ID,
+} from "@/core/benchmarks/catalog";
+import {
+  resolveBenchmarkRoots,
+  resolveSnapshotRoot,
+} from "@/core/benchmarks/config";
+import { BenchmarkLoader } from "@/core/benchmarks/loader";
+import type { AgentConfig } from "@/core/domain/run";
 import type { RunRecord } from "@/core/domain/run";
+import type { TaskManifest } from "@/core/domain/task";
 import { exportPublicDemo } from "@/core/demo/seed";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
@@ -17,13 +29,15 @@ import { runMatrix as executeMatrix } from "@/core/runner/matrix";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { createSolariServices } from "@/core/solari/clients";
 import { runSolariSmoke, type SmokeReport } from "@/core/solari/smoke";
-import { agents, getAgent, getTask, listTasks } from "@/core/tasks/registry";
 import { VerifierRegistry } from "@/core/verifiers/registry";
+
+type CliMatrixOptions = { benchmarkId: string; concurrency: number };
 
 export interface CliRuntime {
   dryRun(request: RunRequest): Promise<DryRunReport>;
   runOne(request: RunRequest): Promise<RunRecord>;
-  runMatrix(options: { concurrency: number }): Promise<RunRecord[]>;
+  matrixSummary(options: CliMatrixOptions): Promise<string>;
+  runMatrix(options: CliMatrixOptions): Promise<RunRecord[]>;
   smoke(): Promise<SmokeReport | unknown>;
   writeLine(line: string): void;
   dispose(): Promise<void>;
@@ -67,8 +81,20 @@ function confirmed(values: Map<string, string | boolean>): boolean {
   return value === true || value === "true";
 }
 
-function matrixSummary(concurrency: number): string {
-  const tasks = listTasks();
+function selectedBenchmark(values: Map<string, string | boolean>): string {
+  const value = values.get("benchmark");
+  if (value === undefined) return DEFAULT_BENCHMARK_ID;
+  if (typeof value !== "string" || !value) {
+    throw new Error("--benchmark requires a value");
+  }
+  return value;
+}
+
+function formatMatrixSummary(
+  concurrency: number,
+  agents: AgentConfig[],
+  tasks: TaskManifest[],
+): string {
   const estimates = estimateResources(
     agents.flatMap(() => tasks.map((task) => ({ budget: task.budget }))),
   );
@@ -103,6 +129,7 @@ export async function runCli(
   try {
     if (parsed.command === "dry-run") {
       const report = await activeRuntime.dryRun({
+        benchmarkId: selectedBenchmark(parsed.values),
         taskId: required(parsed.values, "task"),
         agentId: required(parsed.values, "agent"),
       });
@@ -115,6 +142,7 @@ export async function runCli(
     }
     if (parsed.command === "run") {
       const run = await activeRuntime.runOne({
+        benchmarkId: selectedBenchmark(parsed.values),
         taskId: required(parsed.values, "task"),
         agentId: required(parsed.values, "agent"),
       });
@@ -124,9 +152,13 @@ export async function runCli(
     if (parsed.command === "matrix") {
       const concurrencyValue = parsed.values.get("concurrency") ?? "1";
       const concurrency = Number(concurrencyValue);
-      activeRuntime.writeLine(matrixSummary(concurrency));
+      const options = {
+        benchmarkId: selectedBenchmark(parsed.values),
+        concurrency,
+      };
+      activeRuntime.writeLine(await activeRuntime.matrixSummary(options));
       if (!confirmed(parsed.values)) throw new Error("Matrix confirmation required; pass --yes");
-      const records = await activeRuntime.runMatrix({ concurrency });
+      const records = await activeRuntime.runMatrix(options);
       activeRuntime.writeLine(JSON.stringify(records, null, 2));
       return;
     }
@@ -143,14 +175,28 @@ export function createDefaultRuntime(): CliRuntime {
   const events = new RunEventBus();
   const runner = new SpawnCommandRunner();
   const services = createSolariServices(process.env.SOLARI_API_KEY ?? "");
+  const catalog = new BenchmarkCatalog(
+    resolveBenchmarkRoots(process.env.AGENTBENCH_BENCHMARK_ROOTS),
+    new BenchmarkLoader(
+      resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH),
+    ),
+  );
   const orchestrator = new AgentBenchOrchestrator({
     repository,
     events,
     planner: new CodexPlanner(runner),
     generator: new CodexGenerator(runner),
     verifier: new VerifierRegistry(services),
-    getTask,
-    getAgent,
+    resolveSelection: (request) => catalog.resolveSelection(request),
+    preflight: async (selection) => {
+      const preflight = await runPreflight(selection.agent, {
+        runner,
+        env: process.env,
+      });
+      if (!preflight.ok) {
+        throw new Error(`Preflight failed: ${preflight.detailCode}`);
+      }
+    },
     createWorkspace,
     packageSubmission: (workspace) =>
       packageSubmission(workspace, defaultSubmissionPolicy),
@@ -159,27 +205,27 @@ export function createDefaultRuntime(): CliRuntime {
     generationResources: { services },
   });
 
-  const requirePreflight = async (agentId: string) => {
-    const preflight = await runPreflight(getAgent(agentId), {
-      runner,
-      env: process.env,
-    });
-    if (!preflight.ok) throw new Error(`Preflight failed: ${preflight.detailCode}`);
-  };
-
   return {
     dryRun: (request) => orchestrator.dryRun(request),
-    async runOne(request) {
-      await requirePreflight(request.agentId);
-      return orchestrator.run(request);
+    runOne: (request) => orchestrator.run(request),
+    async matrixSummary(options) {
+      const [agents, tasks] = await Promise.all([
+        catalog.listAgents(options.benchmarkId),
+        catalog.listTasks(options.benchmarkId),
+      ]);
+      return formatMatrixSummary(options.concurrency, agents, tasks);
     },
     async runMatrix(options) {
-      for (const agent of agents) await requirePreflight(agent.id);
+      const [agents, tasks] = await Promise.all([
+        catalog.listAgents(options.benchmarkId),
+        catalog.listTasks(options.benchmarkId),
+      ]);
       return executeMatrix(orchestrator, {
+        benchmarkId: options.benchmarkId,
         confirm: true,
         concurrency: options.concurrency,
-        agents: [...agents],
-        tasks: listTasks(),
+        agents,
+        tasks,
       });
     },
     smoke: () => runSolariSmoke(services),
@@ -197,7 +243,13 @@ export function createDefaultRuntime(): CliRuntime {
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
 if (import.meta.url === invokedPath) {
   runCli(process.argv.slice(2)).catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(
+      error instanceof BenchmarkSelectionError
+        ? error.code
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    );
     process.exitCode = 1;
   });
 }

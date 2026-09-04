@@ -3,6 +3,7 @@ import type { RunApiPort } from "@/server/contracts";
 
 const submitSchema = z
   .object({
+    benchmarkId: z.string().min(1).optional(),
     taskId: z.string().min(1),
     agentId: z.string().min(1),
     dryRun: z.boolean().optional(),

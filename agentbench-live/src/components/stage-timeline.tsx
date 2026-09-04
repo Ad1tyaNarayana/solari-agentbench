@@ -2,6 +2,8 @@ import type { RunRecord, RunStage } from "@/core/domain/run";
 
 const stages: Exclude<RunStage, "failed">[] = [
   "queued",
+  "loading",
+  "preflight",
   "planning",
   "generating",
   "provisioning",

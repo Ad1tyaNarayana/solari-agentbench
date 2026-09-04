@@ -116,7 +116,7 @@ button, select { font: inherit; }
 .run-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; align-items: start; }
 .run-layout__main, .run-layout__rail { display: grid; gap: 24px; }
 .panel { padding: 28px; border: 1px solid var(--line); background: rgba(18,21,19,.86); }
-.stage-timeline { display: grid; grid-template-columns: repeat(8, 1fr); margin: 35px 0; list-style: none; }
+.stage-timeline { display: grid; grid-template-columns: repeat(10, 1fr); margin: 35px 0; list-style: none; }
 .stage-timeline li { position: relative; padding-top: 27px; color: var(--dim); font: .58rem var(--font-mono); text-transform: uppercase; text-align: center; }
 .stage-timeline li::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 1px; background: var(--line); }
 .stage-timeline li > span { position: absolute; z-index: 1; top: 2px; left: calc(50% - 5px); width: 11px; height: 11px; border: 2px solid var(--surface); border-radius: 50%; background: #424642; }
