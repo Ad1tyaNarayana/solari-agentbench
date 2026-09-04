@@ -1,6 +1,12 @@
 import { resolve } from "node:path";
 import type { AgentConfig } from "@/core/domain/run";
-import type { Primitive, RunPlan } from "@/core/domain/plan";
+import type { RunPlan } from "@/core/domain/plan";
+import {
+  buildLegacyCodexExecutionPrompt,
+  solariPrimitivesForTool,
+  solariMcpServerDefinition,
+  solariToolsForPrimitives,
+} from "@/core/providers/codex-sdk";
 import type { JsonlEvent } from "./jsonl";
 import type { CommandRunner, CommandSpec } from "./process";
 import { AgentProcessError, AgentTimeoutError } from "./codex-planner";
@@ -21,100 +27,12 @@ export type GenerationResult = {
   events: JsonlEvent[];
 };
 
-const solariToolAllowlists: Record<Primitive, readonly string[]> = {
-  browser: [
-    "solari_browser_create",
-    "solari_browser_profiles",
-    "solari_browser_autologin_status",
-    "solari_browser_autologin_site",
-    "solari_browser_login",
-    "solari_browser_save_profile",
-    "solari_browser_await_login",
-    "solari_browser_navigate",
-    "solari_browser_read_page",
-    "solari_browser_screenshot",
-    "solari_browser_click",
-    "solari_browser_type",
-    "solari_browser_key",
-    "solari_browser_evaluate",
-    "solari_browser_replay_url",
-    "solari_browser_close",
-  ],
-  sandbox: [
-    "solari_sandbox_create",
-    "solari_list",
-    "solari_kill",
-    "solari_connect",
-    "solari_exec",
-    "solari_run_command_bg",
-    "solari_run_code",
-    "solari_read_file",
-    "solari_write_file",
-    "solari_list_files",
-    "solari_get_preview_url",
-  ],
-  desktop: [
-    "solari_desktop_create",
-    "solari_list",
-    "solari_kill",
-    "solari_connect",
-    "solari_exec",
-    "solari_run_command_bg",
-    "solari_run_code",
-    "solari_read_file",
-    "solari_write_file",
-    "solari_list_files",
-    "solari_get_preview_url",
-    "solari_screenshot",
-    "solari_click",
-    "solari_type",
-    "solari_key",
-    "solari_open_app",
-  ],
-};
-
-const solariCreateTools: Record<Primitive, string> = {
-  browser: "solari_browser_create",
-  sandbox: "solari_sandbox_create",
-  desktop: "solari_desktop_create",
-};
-
-export function solariToolsForPrimitives(primitives: Primitive[]): string[] {
-  const tools: string[] = [];
-  const seen = new Set<string>();
-  for (const primitive of primitives) {
-    for (const tool of solariToolAllowlists[primitive]) {
-      if (!seen.has(tool)) {
-        seen.add(tool);
-        tools.push(tool);
-      }
-    }
-  }
-  return tools;
-}
-
-export function solariPrimitivesForTool(toolName: string): Primitive[] {
-  const normalized = toolName.startsWith("solari_")
-    ? toolName
-    : `solari_${toolName}`;
-  return (Object.entries(solariToolAllowlists) as Array<
-    [Primitive, readonly string[]]
-  >)
-    .filter(([, tools]) => tools.includes(normalized))
-    .map(([primitive]) => primitive);
-}
+export { solariPrimitivesForTool, solariToolsForPrimitives };
 
 export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
-  const prompt = `${input.taskPrompt}\n\nApproved RunPlan:\n${JSON.stringify(input.plan, null, 2)}\n\nCreate the mandatory submission files first, in the fewest write operations possible: submission/results.json, submission/methodology.md, submission/provenance.json, and all task-required source and dependency files. Do not verify or polish until every required file exists and results.json contains valid JSON. Then use only the remaining time for targeted checks. Write the complete final submission under submission/.`;
-  const enabledTools = solariToolsForPrimitives(input.plan.primitives);
+  const prompt = buildLegacyCodexExecutionPrompt(input.taskPrompt, input.plan);
   const guardPath = resolve("src/core/agents/solari-mcp-guard.mjs");
-  const serverArgs = [
-    guardPath,
-    input.plan.primitives.map((primitive) => solariCreateTools[primitive]).join(","),
-    "npx",
-    "-y",
-    "@solarisdk/mcp@0.4.3",
-  ];
+  const server = solariMcpServerDefinition(input.plan.primitives, guardPath);
   return {
     command: "codex",
     args: [
@@ -129,11 +47,11 @@ export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
       "-c",
       `model_reasoning_effort=\"${input.agent.reasoningEffort}\"`,
       "-c",
-      `mcp_servers.solari.command=${JSON.stringify(process.execPath)}`,
+      `mcp_servers.solari.command=${JSON.stringify(server.command)}`,
       "-c",
-      `mcp_servers.solari.args=${JSON.stringify(serverArgs)}`,
+      `mcp_servers.solari.args=${JSON.stringify(server.args)}`,
       "-c",
-      `mcp_servers.solari.enabled_tools=${JSON.stringify(enabledTools)}`,
+      `mcp_servers.solari.enabled_tools=${JSON.stringify(server.enabled_tools)}`,
       "--cd",
       input.workspace.root,
       prompt,
@@ -147,6 +65,7 @@ export function buildGeneratorCommand(input: GeneratorInput): CommandSpec {
   };
 }
 
+/** @deprecated Task 7 removes direct planner/generator runtime composition. */
 export class CodexGenerator {
   constructor(private readonly runner: CommandRunner) {}
 

@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import type { AgentConfig } from "@/core/domain/run";
-import { RunPlanSchema, validatePlanForTask, type RunPlan } from "@/core/domain/plan";
+import type { RunPlan } from "@/core/domain/plan";
 import type { TaskManifest } from "@/core/domain/task";
+import {
+  parseCodexRunPlan,
+} from "@/core/providers/codex-sdk";
+import { ProviderPlanInvalidError } from "@/core/providers/errors";
 import type { CommandRunner, CommandSpec } from "./process";
 import { safeChildEnvironment } from "./process";
 import type { JsonlEvent } from "./jsonl";
@@ -15,9 +19,9 @@ export type PlannerInput = {
   timeoutMs: number;
 };
 
-export class PlanInvalidError extends Error {
+export class PlanInvalidError extends ProviderPlanInvalidError {
   constructor(message: string) {
-    super(message);
+    super(message, "codex");
     this.name = "PlanInvalidError";
   }
 }
@@ -70,12 +74,14 @@ function buildPlannerCommand(
 }
 
 function validate(raw: string, task: TaskManifest): RunPlan {
-  const decoded: unknown = JSON.parse(raw);
-  const parsed = RunPlanSchema.safeParse(decoded);
-  if (!parsed.success) throw new Error(parsed.error.message);
-  return validatePlanForTask(parsed.data, task);
+  return parseCodexRunPlan(raw, {
+    id: task.id,
+    prompt: task.prompt,
+    allowedPrimitives: task.allowedPrimitives,
+  });
 }
 
+/** @deprecated Task 7 removes direct planner/generator runtime composition. */
 export class CodexPlanner {
   constructor(private readonly runner: CommandRunner) {}
 

@@ -1,0 +1,12 @@
+{"type":"thread.started","thread_id":"thread-1"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"reason-1","type":"reasoning","text":"Inspect the task"}}
+{"type":"item.completed","item":{"id":"reason-1","type":"reasoning","text":"Use the approved sandbox"}}
+{"type":"item.started","item":{"id":"command-1","type":"command_execution","command":"npm test","aggregated_output":"","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"command-1","type":"command_execution","command":"npm test","aggregated_output":"2 passed","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"tool-1","type":"mcp_tool_call","server":"solari","tool":"solari_sandbox_create","arguments":{"image":"node"},"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"tool-1","type":"mcp_tool_call","server":"solari","tool":"solari_sandbox_create","arguments":{"image":"node"},"result":{"content":[],"structured_content":{"sandboxId":"sbx-1"}},"status":"completed"}}
+{"type":"item.completed","item":{"id":"file-1","type":"file_change","changes":[{"path":"submission/results.json","kind":"add"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"warning-1","type":"error","message":"non-fatal diagnostic"}}
+{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"Submission complete"}}
+{"type":"turn.completed","usage":{"input_tokens":120,"cached_input_tokens":20,"cache_write_input_tokens":5,"output_tokens":30,"reasoning_output_tokens":8}}

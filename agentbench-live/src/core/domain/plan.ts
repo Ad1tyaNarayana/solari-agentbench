@@ -55,7 +55,7 @@ export function runPlanOutputJsonSchema(): Record<string, unknown> {
 
 export function validatePlanForTask(
   plan: RunPlan,
-  task: TaskManifest,
+  task: Pick<TaskManifest, "id" | "allowedPrimitives">,
 ): RunPlan {
   const forbidden = plan.primitives.find(
     (item) => !task.allowedPrimitives.includes(item),

@@ -3,6 +3,7 @@ export type ProviderErrorCode =
   | "provider_incompatible"
   | "credential_missing"
   | "preflight_failed"
+  | "plan_invalid"
   | "agent_timeout"
   | "agent_failed";
 
@@ -67,6 +68,13 @@ export class PreflightFailedError extends ProviderError {
   constructor(message: string, providerId?: string, cause?: unknown) {
     super("preflight_failed", message, { providerId, cause });
     this.name = "PreflightFailedError";
+  }
+}
+
+export class ProviderPlanInvalidError extends ProviderError {
+  constructor(message: string, providerId?: string) {
+    super("plan_invalid", message, { providerId });
+    this.name = "ProviderPlanInvalidError";
   }
 }
 

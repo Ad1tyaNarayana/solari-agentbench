@@ -15,6 +15,7 @@
     "agentbench": "tsx src/cli.ts"
   },
   "dependencies": {
+    "@openai/codex-sdk": "^0.153.2",
     "@solarisdk/browser": "^0.1.1",
     "@solarisdk/desktop": "^0.1.2",
     "@solarisdk/sandbox": "^0.1.2",
