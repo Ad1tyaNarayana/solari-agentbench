@@ -14,12 +14,12 @@ export interface SandboxHandle {
   exec(
     command: string,
     args?: string[],
-    options?: { cwd?: string; timeoutMs?: number },
+    options?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> },
   ): Promise<ExecResult>;
   start(
     command: string,
     args?: string[],
-    options?: { cwd?: string },
+    options?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> },
   ): Promise<SandboxProcess>;
   mkdir(path: string): Promise<void>;
   writeFile(path: string, contents: string | Uint8Array): Promise<void>;

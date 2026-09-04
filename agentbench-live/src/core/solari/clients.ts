@@ -122,15 +122,17 @@ class SandboxHandleAdapter implements SandboxHandle {
   exec(
     command: string,
     args: string[] = [],
-    options: { cwd?: string; timeoutMs?: number } = {},
+    options: { cwd?: string; timeoutMs?: number; env?: Record<string, string> } = {},
   ) {
     return this.sandbox.commands.run(command, { args, ...options });
   }
 
-  start(command: string, args: string[] = [], options: { cwd?: string } = {}) {
+  start(command: string, args: string[] = [], options: { cwd?: string; timeoutMs?: number; env?: Record<string, string> } = {}) {
     return this.sandbox.commands.start(command, {
       args,
       cwd: options.cwd,
+      env: options.env,
+      timeoutMs: options.timeoutMs,
       background: true,
     });
   }

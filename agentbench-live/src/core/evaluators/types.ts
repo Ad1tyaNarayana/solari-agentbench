@@ -4,6 +4,7 @@ import type { CredentialStore } from "@/core/credentials/types";
 import type { EvidenceReference, EvidenceWriter } from "@/core/evidence/types";
 import type { AgentProviderRegistry } from "@/core/providers/registry";
 import type { SubmissionPackage } from "@/core/security/package-submission";
+import type { BrowserHandle, DesktopHandle, SandboxHandle } from "@/core/solari/contracts";
 
 export type EvaluatorStatus = "passed" | "failed" | "error" | "skipped";
 export type EvaluatorAssertion = { id: string; passed: boolean; summary: string; expected?: unknown; observed?: unknown };
@@ -21,9 +22,9 @@ export type EvaluatorResult = {
 export type EvaluationReport = { status: "valid-score" | "invalid-score"; score: number | null; possiblePoints: 100; results: EvaluatorResult[] };
 
 export interface EvaluatorResourcePort {
-  acquireSandbox(label: string, options?: { timeoutMs?: number }): Promise<unknown>;
-  acquireBrowser(label: string, options?: { recording?: boolean }): Promise<unknown>;
-  acquireDesktop(label: string, options?: { timeoutMs?: number }): Promise<unknown>;
+  acquireSandbox(label: string, options?: { timeoutMs?: number }): Promise<SandboxHandle>;
+  acquireBrowser(label: string, options?: { recording?: boolean }): Promise<BrowserHandle>;
+  acquireDesktop(label: string, options?: { timeoutMs?: number }): Promise<DesktopHandle>;
   publishOutputs(evaluatorId: string, outputs: Record<string, unknown>): void;
   getOutput(evaluatorId: string, key: string): unknown;
   dispose(): Promise<void>;
