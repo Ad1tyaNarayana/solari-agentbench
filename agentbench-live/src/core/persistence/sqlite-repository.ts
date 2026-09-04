@@ -104,10 +104,16 @@ export class SqliteRunRepository implements RunRepository {
     this.database.pragma("busy_timeout = 5000");
     if (path !== ":memory:") this.database.pragma("journal_mode = WAL");
     const hasRuns = Boolean(this.database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'").get());
-    if (hasRuns) migrateDatabase(this.database);
-    this.database.exec(
-      readFileSync(resolve("src/core/persistence/schema.sql"), "utf8"),
-    );
+    const schema = readFileSync(resolve("src/core/persistence/schema.sql"), "utf8");
+    if (hasRuns) {
+      migrateDatabase(this.database);
+      this.database.exec(schema);
+    } else {
+      this.database.transaction(() => {
+        this.database.exec(schema);
+        this.database.pragma("user_version = 2");
+      }).immediate();
+    }
   }
 
   create(input: CreateRunInput): RunRecord {

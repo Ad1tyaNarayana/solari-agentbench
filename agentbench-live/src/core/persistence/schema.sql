@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS runs (
   harness_version TEXT
 );
 
-PRAGMA user_version = 2;
 
 CREATE TABLE IF NOT EXISTS run_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

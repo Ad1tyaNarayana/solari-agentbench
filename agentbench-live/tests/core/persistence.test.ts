@@ -130,6 +130,52 @@ test("migrates legacy runs and round-trips snapshot comparability identity", asy
   await rm(directory, { recursive: true, force: true });
 });
 
+test("preserves a newer schema version when reopening an existing database", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentbench-version-"));
+  const databasePath = join(directory, "future.sqlite");
+  repository = new SqliteRunRepository(databasePath);
+  repository.close();
+  repository = undefined;
+  const database = new Database(databasePath);
+  database.pragma("user_version = 3");
+  database.close();
+
+  repository = new SqliteRunRepository(databasePath);
+  repository.close();
+  repository = undefined;
+  const reopened = new Database(databasePath);
+  expect(reopened.pragma("user_version", { simple: true }) as number).toBe(3);
+  reopened.close();
+  await rm(directory, { recursive: true, force: true });
+});
+
+test("initializes a fresh database at schema version 2 with all identity columns", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentbench-fresh-"));
+  const databasePath = join(directory, "fresh.sqlite");
+  repository = new SqliteRunRepository(databasePath);
+  repository.close();
+  repository = undefined;
+  const database = new Database(databasePath);
+  expect(database.pragma("user_version", { simple: true }) as number).toBe(2);
+  expect(
+    (database.pragma("table_info(runs)") as Array<{ name: string }>).map(
+      (column) => column.name,
+    ),
+  ).toEqual(
+    expect.arrayContaining([
+      "benchmark_id",
+      "benchmark_version",
+      "benchmark_digest",
+      "snapshot_path",
+      "provider_id",
+      "harness_id",
+      "harness_version",
+    ]),
+  );
+  database.close();
+  await rm(directory, { recursive: true, force: true });
+});
+
 test("assigns monotonically increasing persisted event sequences", () => {
   repository = new SqliteRunRepository(":memory:");
   const run = repository.create({ taskId: "sample", agentId: "sol-low" });
