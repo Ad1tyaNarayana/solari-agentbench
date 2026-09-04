@@ -43,6 +43,28 @@ test("redacts keys, bearer headers, signed session URLs, and local roots", () =>
   ).not.toMatch(/secret|signed|Users\\Admin/);
 });
 
+test("redacts separator-obfuscated credential assignments without changing safe URLs", () => {
+  const input = [
+    "A.p-I__K_eY=unregistered-provider-secret",
+    "j_W.t = 'unregistered-jwt-secret'",
+    '"AcCeSs---To_Ken": "unregistered-access-secret"',
+    "ordinary_key=visible",
+    "endpoint=https://example.test/path?mode=view",
+    "callback=https://identity.example.test/callback?A.p-I__K_eY=url-secret",
+  ].join("; ");
+
+  expect(redact(input)).toBe(
+    [
+      "A.p-I__K_eY=[REDACTED]",
+      "j_W.t = '[REDACTED]'",
+      '"AcCeSs---To_Ken": "[REDACTED]"',
+      "ordinary_key=visible",
+      "endpoint=https://example.test/path?mode=view",
+      "callback=[REDACTED_SIGNED_URL]",
+    ].join("; "),
+  );
+});
+
 test("rejects dotenv files", async () => {
   const workspace = await fixtureWorkspace({
     "submission/results.json": "{}",

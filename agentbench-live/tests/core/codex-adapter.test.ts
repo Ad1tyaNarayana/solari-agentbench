@@ -236,6 +236,10 @@ test("JSONL parsing redacts secrets before returning events", () => {
     `${fixture}{"type":"log","value":"Bearer slr_live_id_secret"}\n`,
   );
   expect(events).toHaveLength(3);
+  expect(events).toContainEqual({
+    type: "turn.completed",
+    usage: { input_tokens: 20, output_tokens: 8 },
+  });
   expect(JSON.stringify(events)).not.toContain("slr_live_id_secret");
 });
 

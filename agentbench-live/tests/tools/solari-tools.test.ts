@@ -207,6 +207,48 @@ describe("Solari tool policy and lifecycle", () => {
     }
   });
 
+  it("redacts unregistered separator-obfuscated assignments from broker rejection causes", async () => {
+    const { broker, sandbox, supervisor } = brokerFor(["sandbox"]);
+    const failure = Object.assign(
+      new Error("provider A.p-I__K_eY=unregistered-provider-secret", {
+        cause: new Error("upstream j_W.t = 'unregistered-jwt-secret'"),
+      }),
+      {
+        detail: '"AcCeSs---To_Ken": "unregistered-access-secret"',
+      },
+    );
+    sandbox.exec = vi.fn(async () => {
+      throw failure;
+    });
+
+    try {
+      await broker.invoke("sandbox_create", {}, new AbortController().signal);
+      const rejection = (await broker
+        .invoke(
+          "sandbox_exec",
+          { handle: "s-1", command: "node", args: [] },
+          new AbortController().signal,
+        )
+        .catch((error: unknown) => error)) as AgentToolError;
+
+      expect(rejection).toBeInstanceOf(AgentToolError);
+      expect(rejection.code).toBe("execution_failed");
+      expect(rejection.cause).toBeInstanceOf(Error);
+      expect(rejection.cause).not.toBe(failure);
+      expect((rejection.cause as Error).message).toBe(
+        "provider A.p-I__K_eY=[REDACTED]",
+      );
+      const loggable = collectLoggableErrorText(rejection);
+      expect(loggable).toContain("j_W.t = '[REDACTED]'");
+      expect(loggable).toContain('"AcCeSs---To_Ken": "[REDACTED]"');
+      expect(loggable).not.toMatch(
+        /unregistered-provider-secret|unregistered-jwt-secret|unregistered-access-secret/,
+      );
+    } finally {
+      await supervisor.cleanup();
+    }
+  });
+
   it("replaces hostile frozen provider errors with inert causes without invoking accessors", async () => {
     const exactSecret = "hostile-provider-secret";
     let getterCalls = 0;

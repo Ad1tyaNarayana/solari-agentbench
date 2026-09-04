@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { EnvironmentCredentialStore } from "@/core/credentials/environment-store";
 import {
+  redactCredentialError,
   redactCredentialOutput,
   snapshotCredentialRedaction,
 } from "@/core/credentials/redaction";
@@ -239,6 +240,30 @@ test("redacts an Error name inherited from its provider-defined prototype", asyn
   expect(String(rejection)).not.toContain(secret);
 });
 
+test("redacts unregistered separator-obfuscated assignments from detached errors", () => {
+  const failure = Object.assign(
+    new Error("request failed A.p-I__K_eY=unregistered-provider-secret", {
+      cause: new Error("upstream j_W.t = 'unregistered-jwt-secret'"),
+    }),
+    {
+      detail: '"AcCeSs---To_Ken": "unregistered-access-secret"',
+    },
+  );
+
+  const rejection = redactCredentialError(failure) as Error & {
+    cause: Error;
+    detail: string;
+  };
+
+  expect(rejection).not.toBe(failure);
+  expect(rejection.message).toBe("request failed A.p-I__K_eY=[REDACTED]");
+  expect(rejection.cause.message).toBe("upstream j_W.t = '[REDACTED]'");
+  expect(rejection.detail).toBe('"AcCeSs---To_Ken": "[REDACTED]"');
+  expect(collectErrorText(rejection)).not.toMatch(
+    /unregistered-provider-secret|unregistered-jwt-secret|unregistered-access-secret/,
+  );
+});
+
 test("returns an immutable snapshot for persistence and publication boundaries", async () => {
   const store = environmentStore({ api: "snapshot-secret" });
 
@@ -251,3 +276,22 @@ test("returns an immutable snapshot for persistence and publication boundaries",
     ).toBe("[REDACTED]");
   });
 });
+
+function collectErrorText(value: unknown): string {
+  const strings: string[] = [];
+  const seen = new WeakSet<object>();
+  const visit = (item: unknown) => {
+    if (typeof item === "string") {
+      strings.push(item);
+      return;
+    }
+    if (item === null || typeof item !== "object" || seen.has(item)) return;
+    seen.add(item);
+    for (const key of Reflect.ownKeys(item)) {
+      const descriptor = Object.getOwnPropertyDescriptor(item, key);
+      if (descriptor !== undefined && "value" in descriptor) visit(descriptor.value);
+    }
+  };
+  visit(value);
+  return strings.join("\n");
+}
