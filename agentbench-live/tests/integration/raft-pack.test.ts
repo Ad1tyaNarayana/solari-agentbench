@@ -1,11 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { BenchmarkLoader } from "@/core/benchmarks/loader";
+import { BenchmarkCatalog } from "@/core/benchmarks/catalog";
+import { CertificationService } from "@/core/certification/service";
+import { createBuiltinEvaluatorRegistry } from "@/core/evaluators/builtins";
 
 const execFileAsync = promisify(execFile);
 const packRoot = resolve("examples/packs/raft-consensus-reproduction");
@@ -39,6 +42,31 @@ test("discovers the Raft pack as an external root with deterministic scoring", a
   expect(loaded.definition.tasks[0].evaluators.filter((item) =>
     item.type === "model-judge",
   )).toHaveLength(0);
+});
+
+test("external-only certification validates the reference but rejects fake Solari provenance", async () => {
+  const snapshots = await temporaryDirectory("raft-cert-snapshots-");
+  const outputRoot = await temporaryDirectory("raft-cert-output-");
+  const outputPath = join(outputRoot, "live-reference.json");
+  const loader = new BenchmarkLoader(snapshots);
+  const catalog = new BenchmarkCatalog([packRoot], loader);
+  expect((await catalog.listTasks()).map((task) => task.id)).toEqual(["raft-safety"]);
+  const services = { browser: {}, sandbox: {}, desktop: {} };
+  const evaluator = { run: vi.fn() };
+  const certification = new CertificationService({
+    loader,
+    registry: createBuiltinEvaluatorRegistry(services as never),
+    evaluator: evaluator as never,
+    services: services as never,
+    repositoryCommit: "test-commit",
+  });
+
+  await expect(certification.validate({ benchmarkRoot: packRoot, submissionDirectory: referenceRoot }))
+    .resolves.toMatchObject({ valid: true, provisioned: false, benchmarkId: "raft-consensus-reproduction", taskId: "raft-safety" });
+  await expect(certification.certify({ benchmarkRoot: packRoot, submissionDirectory: referenceRoot, outputPath }))
+    .rejects.toThrow(/live Solari services are required/i);
+  expect(evaluator.run).not.toHaveBeenCalled();
+  await expect(access(outputPath)).rejects.toThrow();
 });
 
 test("reference simulator produces byte-stable passing traces for every pinned scenario", async () => {

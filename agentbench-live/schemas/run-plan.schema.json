@@ -3,7 +3,6 @@
   "type": "object",
   "properties": {
     "primitives": {
-      "minItems": 1,
       "type": "array",
       "items": {
         "type": "string",

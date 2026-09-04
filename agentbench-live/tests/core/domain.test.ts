@@ -30,6 +30,16 @@ test("rejects duplicate primitives", () => {
   ).toBe(false);
 });
 
+test("accepts an explicit no-resource plan for evaluator-only tasks", () => {
+  expect(
+    RunPlanSchema.safeParse({
+      primitives: [],
+      reason: {},
+      verificationStrategy: "deterministic evaluator",
+    }).success,
+  ).toBe(true);
+});
+
 test("rejects a selected primitive without a rationale", () => {
   expect(
     RunPlanSchema.safeParse({

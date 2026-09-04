@@ -8,7 +8,6 @@ export const RunPlanSchema = z
   .object({
     primitives: z
       .array(PrimitiveSchema)
-      .min(1)
       .superRefine((items, ctx) => {
         if (new Set(items).size !== items.length) {
           ctx.addIssue({ code: "custom", message: "primitives must be unique" });
