@@ -70,6 +70,26 @@ evaluators:
 }
 
 describe("migrated tutorial benchmark", () => {
+  it("documents the audience, trust boundary, deterministic tutorials, and Raft certification", async () => {
+    const readme = await readFile(join(process.cwd(), "README.md"), "utf8");
+    const repositoryReadme = await readFile(join(process.cwd(), "..", "README.md"), "utf8");
+    expect(readme).toMatch(/engineering leads[\s\S]*hiring teams/i);
+    expect(readme).toMatch(/sealed evaluator inputs/i);
+    expect(readme).toMatch(/zero.*model-judge/i);
+    expect(readme).toContain("raft-consensus-reproduction");
+    expect(readme).toContain("agentbench -- certify");
+    expect(readme).toMatch(/Studio[\s\S]*same[\s\S]*snapshot[\s\S]*evaluator/i);
+    expect(repositoryReadme).toContain("raft-consensus-reproduction");
+  });
+
+  it("keeps both bundled tutorials deterministic with zero model-judge points", async () => {
+    const catalog = new BenchmarkCatalog([pack], new BenchmarkLoader(await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-"))));
+    const loaded = await catalog.getBenchmark("agentbench-live");
+    for (const task of loaded.definition.tasks) {
+      expect(task.evaluators.filter((evaluator) => evaluator.type === "model-judge")).toHaveLength(0);
+    }
+  });
+
   it("projects canonical files to generic evaluator task and agent contracts", async () => {
     const catalog = new BenchmarkCatalog([pack], new BenchmarkLoader(await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-"))));
     const loaded = await catalog.getBenchmark("agentbench-live");

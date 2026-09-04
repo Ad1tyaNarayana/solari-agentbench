@@ -11,7 +11,7 @@ past. Copy one into your project and change the parts you care about.
 
 [AgentBench Live](agentbench-live) is an evidence-first benchmark for coding and research agents. It lets each agent choose among Solari browsers, sandboxes, and desktops, then independently rebuilds and verifies the submission in fresh resources before publishing a scored evidence trail.
 
-The app includes a two-agent by two-task scoreboard, local Codex execution through an existing ChatGPT sign-in, SQLite persistence, server-sent live events, strict resource cleanup, and a safe representative public demo. See the [AgentBench Live README](agentbench-live/README.md) for setup, commands, architecture, security, and cost controls.
+The app includes a two-agent by two-task tutorial scoreboard, custom benchmark authoring, local Codex execution through an existing ChatGPT sign-in, SQLite persistence, server-sent live events, strict resource cleanup, and a safe representative public demo. The external [`raft-consensus-reproduction`](agentbench-live/examples/packs/raft-consensus-reproduction) pack shows how to turn a real distributed-systems paper into deterministic fault scenarios, trace-derived safety checks, and recorded Solari evidence. See the [AgentBench Live README](agentbench-live/README.md) for setup, certification commands, architecture, security, and cost controls.
 
 ## Examples
 

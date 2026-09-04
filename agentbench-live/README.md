@@ -1,6 +1,6 @@
 # AgentBench Live
 
-AgentBench Live is an evidence-first benchmark for coding and research agents. It gives agents the same task and budget, lets each agent choose the Solari primitives it needs, then independently rebuilds and verifies every submission in fresh infrastructure.
+AgentBench Live is an evidence-first benchmark for coding and research agents, built for engineering leads and hiring teams who need to choose which agent configuration can be trusted with a real workflow. It gives agents the same task and budget, lets each agent choose the Solari primitives it needs, then independently rebuilds and verifies every submission in fresh infrastructure.
 
 The result is a public scoreboard backed by observed builds, browser assertions, numerical reproductions, screenshots, and sanitized logs—not an agent claiming that it finished.
 
@@ -19,12 +19,12 @@ The bundled tutorial compares two exact Codex configurations under identical pro
 | Sol · Low | `gpt-5.6-sol` | low |
 | Luna · High | `gpt-5.6-luna` | high |
 
-They solve two tasks: a complete URL Shortener application and a deterministic reproduction of the “Same Stats, Different Graph” simulated-annealing idea.
+They solve two tasks: a complete URL Shortener application and a deterministic reproduction of the “Same Stats, Different Graph” simulated-annealing idea. Both bundled tutorial tasks are 100% deterministic and assign zero points to model-judge evaluators. The external `raft-consensus-reproduction` pack demonstrates the same system on a deeper distributed-systems paper reproduction.
 
 ## Architecture
 
 ```text
-benchmark files ──> immutable snapshot ──> provider preflight
+benchmark files ──> content-addressed snapshot ──> provider preflight
                                              │
 Next.js dashboard ──> in-process queue ──> planning-only Codex call
         │                                      │
@@ -73,7 +73,7 @@ npm run dev
 
 Open <http://localhost:3000>. With an empty database the dashboard displays a clearly labeled representative four-cell demo; persisted local runs take precedence as soon as one exists.
 
-Open <http://localhost:3000/studio> to create a custom benchmark. Studio edits the canonical files directly, previews the exact YAML and prompt/rubric assets, detects external edits by revision hash, and atomically swaps a fully validated pack into `benchmarks/local`. Save before dry-running or launching; paid launches require the explicit credit acknowledgement.
+Open <http://localhost:3000/studio> to create a custom benchmark. Studio edits the canonical files directly, previews the exact YAML and prompt/rubric assets, detects external edits by revision hash, and atomically swaps a fully validated pack into `benchmarks/local`. Studio-authored packs use the same loader, content-addressed snapshot, orchestrator, and evaluator graph as external packs—there is no lighter test-only execution path. Save before dry-running or launching; paid launches require the explicit credit acknowledgement.
 
 ## Benchmark packs
 
@@ -95,9 +95,35 @@ agentbench-live/
 
 `benchmark.yaml` declares pack identity and task roots, `agents.yaml` declares provider/model/harness identity, and each task owns its prompt, fixtures, resource policy, and evaluator declarations. Every run loads the complete pack into a content-addressed snapshot before provider preflight. Source edits after launch therefore affect only future runs. Snapshots default to `.agentbench/snapshots`; override that gitignored working location with `AGENTBENCH_SNAPSHOT_PATH`.
 
-The built-in evaluator types are `file`, `schema`, `command`, `http`, `browser`, `numeric`, and `model-judge`. Enabled weights must total exactly 100. Prerequisites form an acyclic graph: a failed prerequisite skips its dependents but independent checks continue. Assertion failures earn zero or partial points; evaluator infrastructure errors invalidate the primary score instead of being misreported as a bad submission.
+The built-in evaluator types are `file`, `schema`, `command`, `http`, `browser`, `numeric`, and `model-judge`. Enabled weights must total exactly 100. Model judges are capped at 30 points by default; exceeding the cap is invalid, and a majority additionally requires an explicit `allowModelJudgeMajority` opt-in. Prerequisites form an acyclic graph: a failed prerequisite skips its dependents but independent checks continue. Assertion failures earn zero or partial points; evaluator infrastructure errors invalidate the primary score instead of being misreported as a bad submission.
 
-Command evaluators receive immutable `/benchmark` and `/submission` trees and may write only their result area. Network is disabled with a fresh Linux network namespace unless the benchmark explicitly enables it. HTTP and recorded-browser evaluators target verifier-owned outputs such as a preceding command evaluator's preview URL. Model judges receive only declared artifacts and retain provider/model, sampling, rubric, prompt, input digests, usage, raw redacted responses, and repair count as provenance.
+Command evaluators receive permission-hardened, tamper-evident sealed evaluator inputs at `/benchmark` and `/submission` and may write only their result area. A canonical path/size/SHA-256 manifest is checked after the entire dependent evaluator graph finishes; any mutation is an evaluator error and invalidates the score. Network is disabled with a fresh Linux network namespace unless the benchmark explicitly enables it. HTTP and recorded-browser evaluators target verifier-owned outputs such as a preceding command evaluator's preview URL. Model judges receive only declared artifacts and retain provider/model, sampling, rubric, prompt, input digests, usage, raw redacted responses, and repair count as provenance.
+
+## Raft paper-reproduction pack
+
+`examples/packs/raft-consensus-reproduction` is an external pack based on Ongaro and Ousterhout's [USENIX ATC 2014 paper page](https://www.usenix.org/conference/atc14/technical-sessions/presentation/ongaro) and [official PDF](https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf). Its five deterministic fault scenarios reproduce and independently check:
+
+- election safety: at most one leader exists in a term;
+- log matching: equal index/term entries imply equal prefixes;
+- leader completeness: committed entries appear in later leaders;
+- state-machine safety: nodes never apply different commands at one index;
+- quorum behavior: a minority cannot commit, while a connected majority can recover and commit.
+
+The included reference submission is a dependency-free executable model of the paper's election, replication, partition, recovery, and divergent-log-repair subset—not a production Raft implementation. The verifier runs every scenario twice, derives claims from JSONL events instead of trusting the reported summary, and publishes a static trace viewer through an evaluator-owned Solari browser preview.
+
+Validate the pack without provisioning anything, then create a public certificate with live Solari sandbox and browser evidence:
+
+```powershell
+$env:AGENTBENCH_BENCHMARK_ROOTS = "examples/packs/raft-consensus-reproduction"
+npm run agentbench -- certify --benchmark-root examples/packs/raft-consensus-reproduction --submission examples/packs/raft-consensus-reproduction/reference-submission --validate-only
+npm run agentbench -- certify --benchmark-root examples/packs/raft-consensus-reproduction --submission examples/packs/raft-consensus-reproduction/reference-submission --output examples/packs/raft-consensus-reproduction/certification/live-reference.json
+```
+
+```bash
+export AGENTBENCH_BENCHMARK_ROOTS="examples/packs/raft-consensus-reproduction"
+npm run agentbench -- certify --benchmark-root examples/packs/raft-consensus-reproduction --submission examples/packs/raft-consensus-reproduction/reference-submission --validate-only
+npm run agentbench -- certify --benchmark-root examples/packs/raft-consensus-reproduction --submission examples/packs/raft-consensus-reproduction/reference-submission --output examples/packs/raft-consensus-reproduction/certification/live-reference.json
+```
 
 To discover additional packs, set `AGENTBENCH_BENCHMARK_ROOTS` to a platform-delimited list of pack roots. Use `;` on Windows and `:` on macOS/Linux:
 

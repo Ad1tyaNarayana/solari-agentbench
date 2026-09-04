@@ -41,7 +41,7 @@ export default function Home() {
           <p className="eyebrow"><span className="pulse" aria-hidden="true" /> Live evidence, not agent claims</p>
           <h1>AgentBench <em>Live</em></h1>
           <p className="hero__lede">
-            An evidence-first benchmark for coding and research agents. Every build is independently rerun inside fresh Solari infrastructure.
+            An evidence-first benchmark to choose which agent configuration can be trusted with a real workflow. Every build is independently rerun inside fresh Solari infrastructure.
           </p>
           <div className="primitive-row" aria-label="Solari primitives used">
             <span>01 · Browser</span><span>02 · Sandbox</span><span>03 · Desktop</span>
