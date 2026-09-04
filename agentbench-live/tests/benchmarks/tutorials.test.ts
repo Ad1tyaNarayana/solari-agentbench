@@ -70,14 +70,16 @@ evaluators:
 }
 
 describe("migrated tutorial benchmark", () => {
-  it("projects canonical files to the legacy task and agent contracts", async () => {
+  it("projects canonical files to generic evaluator task and agent contracts", async () => {
     const catalog = new BenchmarkCatalog([pack], new BenchmarkLoader(await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-"))));
     const loaded = await catalog.getBenchmark("agentbench-live");
     expect(loaded.definition.version).toBe("1.0.0");
     expect(loaded.definition.tasks.map(({ id }) => id)).toEqual(["same-stats-different-graph", "url-shortener"]);
-    for (const legacy of [urlShortenerTask, sameStatsTask]) {
-      const task = await catalog.getTask(legacy.id);
-      expect(task).toMatchObject({ id: legacy.id, version: legacy.version, title: legacy.title, prompt: legacy.prompt, allowedPrimitives: legacy.allowedPrimitives, requiredEvidence: legacy.requiredEvidence, budget: legacy.budget, verifier: legacy.verifier });
+    for (const tutorial of [urlShortenerTask, sameStatsTask]) {
+      const task = await catalog.getTask(tutorial.id);
+      expect(task).toMatchObject({ id: tutorial.id, version: tutorial.version, title: tutorial.title, prompt: tutorial.prompt, allowedPrimitives: tutorial.allowedPrimitives });
+      expect(task.verifier).toBeUndefined();
+      expect(task.evaluators?.reduce((sum, evaluator) => sum + (evaluator.enabled ? evaluator.weight : 0), 0)).toBe(100);
     }
     const urlPrompt = await readFile(join(pack, "tasks/url-shortener/prompt.md"), "utf8");
     const statsPrompt = await readFile(join(pack, "tasks/same-stats-different-graph/prompt.md"), "utf8");

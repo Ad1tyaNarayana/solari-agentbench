@@ -97,6 +97,7 @@ export class BenchmarkLoader {
       }
 
       for (const { task, prefix } of discovered) {
+        task.snapshotPrefix = prefix;
         const promptFile = await loadFile(`${prefix}/${task.promptPath}`);
         task.prompt = promptFile.content.toString("utf8");
         for (const fixture of task.fixtures) {

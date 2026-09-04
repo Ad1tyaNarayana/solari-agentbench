@@ -30,7 +30,45 @@ CREATE TABLE IF NOT EXISTS runs (
   resolved_model TEXT,
   provider_options TEXT,
   tool_policy TEXT,
-  usage TEXT
+  usage TEXT,
+  evaluation_status TEXT,
+  primary_score REAL,
+  evaluation_report TEXT,
+  evidence_manifest TEXT
+);
+
+CREATE TABLE IF NOT EXISTS evaluator_results (
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  declaration_order INTEGER NOT NULL,
+  evaluator_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  earned_points REAL NOT NULL,
+  possible_points REAL NOT NULL,
+  summary TEXT NOT NULL,
+  outputs TEXT NOT NULL,
+  metadata TEXT NOT NULL,
+  PRIMARY KEY (run_id, evaluator_id)
+);
+
+CREATE TABLE IF NOT EXISTS evaluator_assertions (
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  evaluator_id TEXT NOT NULL,
+  assertion_order INTEGER NOT NULL,
+  assertion_id TEXT NOT NULL,
+  passed INTEGER NOT NULL,
+  summary TEXT NOT NULL,
+  expected TEXT,
+  observed TEXT,
+  PRIMARY KEY (run_id, evaluator_id, assertion_order)
+);
+
+CREATE TABLE IF NOT EXISTS evidence_references (
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  reference_order INTEGER NOT NULL,
+  digest TEXT NOT NULL,
+  role TEXT NOT NULL,
+  reference_json TEXT NOT NULL,
+  PRIMARY KEY (run_id, reference_order)
 );
 
 

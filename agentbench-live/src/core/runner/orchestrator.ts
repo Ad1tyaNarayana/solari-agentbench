@@ -207,8 +207,42 @@ export class AgentBenchOrchestrator {
         this.dependencies.packageSubmission(workspace!),
       );
 
-      const verification = await runWithDeadlineSettled("verification", () =>
-        this.dependencies.verifier.verify({
+      if (task.evaluators && this.dependencies.evaluator) {
+        run = this.move(run, "provisioning");
+        run = this.move(run, "building");
+        run = this.move(run, "verifying");
+        const evaluation = await runWithDeadlineSettled("evaluation", () =>
+          this.dependencies.evaluator!.run({
+            runId: run.id,
+            taskId: task.id,
+            definitions: task.evaluators!,
+            snapshotPrefix: task.snapshotPrefix,
+            submission,
+            snapshot: selection.snapshot,
+            remainingMs,
+          }),
+        );
+        run = this.move(run, "capturing");
+        run = this.dependencies.repository.update(run.id, {
+          evaluationStatus: evaluation.report.status,
+          primaryScore: evaluation.report.score,
+          evaluationReport: evaluation.report,
+          evidenceManifest: evaluation.manifest,
+          score: evaluation.report.score === null ? undefined : { total: evaluation.report.score },
+          evidence: evaluation.manifest as unknown as Record<string, unknown>,
+          sanitizedLogs: [],
+        });
+        if (evaluation.report.status === "invalid-score") {
+          const hasEvaluatorError = evaluation.report.results.some((result) => result.status === "error");
+          throw Object.assign(new Error(hasEvaluatorError ? "Evaluator pipeline reported an error" : "Evaluator score is invalid"), { code: hasEvaluatorError ? "evaluator_error" : "score_invalid" });
+        }
+        const durationMs = now() - startedMs;
+        remainingMs();
+        run = this.move(run, "completed", { completedAt: new Date(now()).toISOString(), durationMs });
+      } else {
+        if (!this.dependencies.verifier) throw new Error("No evaluator pipeline or compatibility verifier is configured");
+        const verification = await runWithDeadlineSettled("verification", () =>
+          this.dependencies.verifier!.verify({
           run,
           task,
           agent,
@@ -222,33 +256,22 @@ export class AgentBenchOrchestrator {
             remainingMs();
             run = this.move(this.requireRun(run.id), stage);
           },
-        }),
-      );
-      if (run.stage !== "verifying" && run.stage !== "capturing") {
-        throw new Error(
-          `Verifier ended before reporting real work stages (last stage: ${run.stage})`,
+          }),
         );
+        if (run.stage !== "verifying" && run.stage !== "capturing") {
+          throw new Error(`Verifier ended before reporting real work stages (last stage: ${run.stage})`);
+        }
+        for (const issue of verification.cleanupIssues ?? []) this.recordCleanupIssue(run.id, issue.detail);
+        run = this.requireRun(run.id);
+        const durationMs = now() - startedMs;
+        remainingMs();
+        run = this.dependencies.repository.update(run.id, {
+          score: applyBudgetOutcome(verification.score, durationMs <= task.budget.totalMs),
+          evidence: verification.evidence,
+          sanitizedLogs: verification.logs.map((line) => redact(line, { localRoots: workspace ? [workspace.root] : [] })),
+        });
+        run = this.move(run, "completed", { completedAt: new Date(now()).toISOString(), durationMs });
       }
-      for (const issue of verification.cleanupIssues ?? []) {
-        this.recordCleanupIssue(run.id, issue.detail);
-      }
-      run = this.requireRun(run.id);
-      const durationMs = now() - startedMs;
-      remainingMs();
-      run = this.dependencies.repository.update(run.id, {
-        score: applyBudgetOutcome(
-          verification.score,
-          durationMs <= task.budget.totalMs,
-        ),
-        evidence: verification.evidence,
-        sanitizedLogs: verification.logs.map((line) =>
-          redact(line, { localRoots: workspace ? [workspace.root] : [] }),
-        ),
-      });
-      run = this.move(run, "completed", {
-        completedAt: new Date(now()).toISOString(),
-        durationMs,
-      });
     } catch (error) {
       run = this.fail(run, error, workspace, now() - startedMs, now);
     } finally {
@@ -284,7 +307,7 @@ export class AgentBenchOrchestrator {
     run = this.dependencies.repository.update(run.id, {
       completedAt: new Date(finishedAtMs).toISOString(),
       durationMs: totalDurationMs,
-      score: current.score
+      score: current.score && !current.evaluationReport
         ? applyBudgetOutcome(
             current.score as ScoreBreakdown,
             totalDurationMs <= task.budget.totalMs,
@@ -356,6 +379,8 @@ export class AgentBenchOrchestrator {
         "verification_failed",
         "evidence_failed",
         "cleanup_failed",
+        "evaluator_error",
+        "score_invalid",
       ].includes(error.code)
     ) {
       return error.code as FailureCode;

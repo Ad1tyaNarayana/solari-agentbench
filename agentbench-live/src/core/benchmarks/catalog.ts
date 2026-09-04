@@ -184,21 +184,23 @@ export class BenchmarkCatalog {
     benchmarkVersion: string,
   ): TaskManifest {
     const compatibility = raw.compatibility;
-    if (!compatibility) {
-      throw new BenchmarkSelectionError(
-        "benchmark_invalid",
-        `Task ${raw.id} is missing its compatibility projection.`,
-      );
-    }
+    const totalMs = raw.resourceLimits.totalMinutes * 60_000;
     return {
       id: raw.id,
       version: benchmarkVersion,
       title: raw.name,
       prompt: raw.prompt,
       allowedPrimitives: [...raw.allowedPrimitives],
-      requiredEvidence: [...compatibility.requiredEvidence],
-      budget: { ...compatibility.legacyBudgetMs },
-      verifier: compatibility.legacyVerifier,
+      requiredEvidence: [...(compatibility?.requiredEvidence ?? [])],
+      budget: compatibility ? { ...compatibility.legacyBudgetMs } : {
+        totalMs,
+        browserMs: raw.resourceLimits.browserSessions > 0 ? totalMs : 0,
+        sandboxMs: raw.resourceLimits.sandboxes > 0 ? totalMs : 0,
+        desktopMs: raw.resourceLimits.desktops > 0 ? totalMs : 0,
+      },
+      verifier: compatibility?.legacyVerifier,
+      evaluators: raw.evaluators.map((item) => ({ ...item, prerequisites: [...item.prerequisites], config: { ...item.config } })),
+      snapshotPrefix: raw.snapshotPrefix,
     };
   }
 }

@@ -43,6 +43,10 @@ type RunRow = {
   provider_options: string | null;
   tool_policy: string | null;
   usage: string | null;
+  evaluation_status: RunRecord["evaluationStatus"] | null;
+  primary_score: number | null;
+  evaluation_report: string | null;
+  evidence_manifest: string | null;
 };
 
 type EventRow = {
@@ -91,6 +95,10 @@ function fromRunRow(row: RunRow): RunRecord {
     providerOptions: optionalJson(row.provider_options),
     toolPolicy: optionalJson(row.tool_policy),
     usage: optionalJson(row.usage),
+    evaluationStatus: row.evaluation_status ?? undefined,
+    primaryScore: row.primary_score,
+    evaluationReport: optionalJson(row.evaluation_report),
+    evidenceManifest: optionalJson(row.evidence_manifest),
   };
 }
 
@@ -119,7 +127,7 @@ export class SqliteRunRepository implements RunRepository {
     } else {
       this.database.transaction(() => {
         this.database.exec(schema);
-        this.database.pragma("user_version = 3");
+        this.database.pragma("user_version = 4");
       }).immediate();
     }
   }
@@ -165,7 +173,10 @@ export class SqliteRunRepository implements RunRepository {
     const current = this.get(id);
     if (!current) throw new Error(`Unknown run: ${id}`);
     const updated = { ...current, ...patch };
-    this.persistUpdate(updated);
+    this.database.transaction(() => {
+      this.persistUpdate(updated);
+      this.persistEvaluation(updated);
+    }).immediate();
     return updated;
   }
 
@@ -225,8 +236,9 @@ export class SqliteRunRepository implements RunRepository {
         failure_detail, sanitized_logs, created_at, started_at, completed_at,
         duration_ms, cleanup_issues, benchmark_id, benchmark_version, benchmark_digest,
         snapshot_path, provider_id, harness_id, harness_version, resolved_model,
-        provider_options, tool_policy, usage
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        provider_options, tool_policy, usage, evaluation_status, primary_score,
+        evaluation_report, evidence_manifest
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         record.id,
         record.taskId,
@@ -258,6 +270,10 @@ export class SqliteRunRepository implements RunRepository {
         record.providerOptions ? JSON.stringify(record.providerOptions) : null,
         record.toolPolicy ? JSON.stringify(record.toolPolicy) : null,
         record.usage ? JSON.stringify(record.usage) : null,
+        record.evaluationStatus ?? null,
+        record.primaryScore ?? null,
+        record.evaluationReport ? JSON.stringify(record.evaluationReport) : null,
+        record.evidenceManifest ? JSON.stringify(record.evidenceManifest) : null,
       );
   }
 
@@ -269,7 +285,8 @@ export class SqliteRunRepository implements RunRepository {
         failure_code = ?, failure_detail = ?, sanitized_logs = ?, started_at = ?,
         completed_at = ?, duration_ms = ?, cleanup_issues = ?, benchmark_id = ?, benchmark_version = ?,
         benchmark_digest = ?, snapshot_path = ?, provider_id = ?, harness_id = ?, harness_version = ?,
-        resolved_model = ?, provider_options = ?, tool_policy = ?, usage = ?
+        resolved_model = ?, provider_options = ?, tool_policy = ?, usage = ?,
+        evaluation_status = ?, primary_score = ?, evaluation_report = ?, evidence_manifest = ?
       WHERE id = ?`)
       .run(
         record.taskVersion ?? null,
@@ -298,7 +315,26 @@ export class SqliteRunRepository implements RunRepository {
         record.providerOptions ? JSON.stringify(record.providerOptions) : null,
         record.toolPolicy ? JSON.stringify(record.toolPolicy) : null,
         record.usage ? JSON.stringify(record.usage) : null,
+        record.evaluationStatus ?? null,
+        record.primaryScore ?? null,
+        record.evaluationReport ? JSON.stringify(record.evaluationReport) : null,
+        record.evidenceManifest ? JSON.stringify(record.evidenceManifest) : null,
         record.id,
       );
+  }
+
+  private persistEvaluation(record: RunRecord): void {
+    if (!record.evaluationReport) return;
+    this.database.prepare("DELETE FROM evaluator_assertions WHERE run_id = ?").run(record.id);
+    this.database.prepare("DELETE FROM evaluator_results WHERE run_id = ?").run(record.id);
+    this.database.prepare("DELETE FROM evidence_references WHERE run_id = ?").run(record.id);
+    const resultStatement = this.database.prepare("INSERT INTO evaluator_results (run_id, declaration_order, evaluator_id, status, earned_points, possible_points, summary, outputs, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const assertionStatement = this.database.prepare("INSERT INTO evaluator_assertions (run_id, evaluator_id, assertion_order, assertion_id, passed, summary, expected, observed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    record.evaluationReport.results.forEach((result, resultIndex) => {
+      resultStatement.run(record.id, resultIndex, result.evaluatorId, result.status, result.earnedPoints, result.possiblePoints, result.summary, JSON.stringify(result.outputs), JSON.stringify(result.metadata));
+      result.assertions.forEach((assertion, assertionIndex) => assertionStatement.run(record.id, result.evaluatorId, assertionIndex, assertion.id, assertion.passed ? 1 : 0, assertion.summary, assertion.expected === undefined ? null : JSON.stringify(assertion.expected), assertion.observed === undefined ? null : JSON.stringify(assertion.observed)));
+    });
+    const evidenceStatement = this.database.prepare("INSERT INTO evidence_references (run_id, reference_order, digest, role, reference_json) VALUES (?, ?, ?, ?, ?)");
+    record.evidenceManifest?.entries.forEach((reference, index) => evidenceStatement.run(record.id, index, reference.digest, reference.role, JSON.stringify(reference)));
   }
 }

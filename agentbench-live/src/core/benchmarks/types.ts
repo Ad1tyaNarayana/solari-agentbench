@@ -27,6 +27,7 @@ export type BenchmarkTaskDefinition = {
     legacyBudgetMs: { totalMs: number; browserMs: number; sandboxMs: number; desktopMs: number };
   };
   evaluators: EvaluatorDefinition[];
+  snapshotPrefix?: string;
 };
 
 export type AgentDefinition = {

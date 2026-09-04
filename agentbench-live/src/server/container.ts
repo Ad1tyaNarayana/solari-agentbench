@@ -28,6 +28,8 @@ import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { RunQueue } from "@/core/runner/queue";
 import { createSolariServices } from "@/core/solari/clients";
 import { VerifierRegistry } from "@/core/verifiers/registry";
+import { EvaluationEngine } from "@/core/evaluators/engine";
+import { createBuiltinEvaluatorRegistry } from "@/core/evaluators/builtins";
 import {
   RunApiError,
   type RunApiPort,
@@ -118,6 +120,13 @@ export function createServerContainer(): RunApiPort {
       credentials,
       createToolBroker: (input) => createAgentToolBroker({ ...input, services }),
       verifier: new VerifierRegistry(services),
+      evaluator: new EvaluationEngine({
+        registry: createBuiltinEvaluatorRegistry(services),
+        services,
+        providers,
+        credentials,
+        evidenceRoot: resolve(".agentbench/evidence"),
+      }),
       resolveSelection: (request) => catalog.resolveSelection(request),
       preflight: async () => undefined,
       createWorkspace,

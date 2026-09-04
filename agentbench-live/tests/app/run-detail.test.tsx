@@ -84,6 +84,14 @@ test("renders primitive rationale and expected-versus-observed evidence", () => 
   expect(screen.getByRole("img", { name: /comparison plot/i })).toBeInTheDocument();
 });
 
+test("renders generic evaluator outcomes, assertions, and judge provenance", () => {
+  render(<EvidencePanel run={{ ...researchRun, evaluationStatus: "valid-score", primaryScore: 70, evaluationReport: { status: "valid-score", score: 70, possiblePoints: 100, results: [{ evaluatorId: "judge", status: "failed", earnedPoints: 70, possiblePoints: 100, summary: "Mostly correct", assertions: [{ id: "accuracy", passed: false, summary: "One mismatch", expected: 1, observed: 0.7 }], evidence: [], outputs: {}, metadata: { provider: "openai-compatible", resolvedModel: "judge-v1", rubricDigest: "rubric123", promptDigest: "prompt123", retryCount: 0 } }] } }} />);
+  expect(screen.getByRole("heading", { name: "judge" })).toBeInTheDocument();
+  expect(screen.getByText(/70 \/ 100 points/i)).toBeInTheDocument();
+  expect(screen.getByText(/expected: 1.*observed: 0.7/i)).toBeInTheDocument();
+  expect(screen.getByText(/openai-compatible.*judge-v1/i)).toBeInTheDocument();
+});
+
 test("renders loading and preflight without removing historical lifecycle stages", () => {
   render(<StageTimeline run={{ ...researchRun, stage: "preflight" }} />);
 

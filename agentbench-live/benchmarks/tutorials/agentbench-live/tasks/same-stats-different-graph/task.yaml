@@ -8,12 +8,18 @@ resources:
   planningRequired: true
   budget: { browserSessions: 1, sandboxes: 1, desktops: 0, totalMinutes: 5 }
 submission: { directory: submission, required: [source/reproduce.py, source/requirements.txt, methodology.md, results.json, provenance.json] }
-compatibility:
-  requiredEvidence: [sandbox]
-  legacyVerifier: same-stats-different-graph
-  legacyBudgetMs: { totalMs: 300000, browserMs: 60000, sandboxMs: 180000, desktopMs: 0 }
 evaluators:
-  - id: tutorial
+  - { id: source, type: file, weight: 5, config: { subject: source/reproduce.py, assertion: present } }
+  - { id: results, type: schema, weight: 10, config: { subject: results.json, schema: evaluators/results.schema.json } }
+  - { id: methodology, type: file, weight: 10, config: { subject: methodology.md, assertion: regex, value: "(?m)^# Seed$[\\s\\S]*^# Objective Function$[\\s\\S]*^# Temperature Schedule$[\\s\\S]*^# Acceptance Rule$", flags: m } }
+  - id: reproduce
     type: command
-    weight: 100
-    config: { command: [true] }
+    weight: 25
+    prerequisites: [source]
+    config: { argv: [python3, /benchmark/tasks/same-stats-different-graph/evaluators/reproduce.py] }
+  - { id: mean-x, type: numeric, weight: 8, prerequisites: [reproduce], config: { operation: absolute-tolerance, actual: { fromEvaluator: reproduce, output: meanX }, expected: 54.27, tolerance: 0.05 } }
+  - { id: mean-y, type: numeric, weight: 8, prerequisites: [reproduce], config: { operation: absolute-tolerance, actual: { fromEvaluator: reproduce, output: meanY }, expected: 47.84, tolerance: 0.05 } }
+  - { id: variance-x, type: numeric, weight: 8, prerequisites: [reproduce], config: { operation: absolute-tolerance, actual: { fromEvaluator: reproduce, output: varianceX }, expected: 280.9, tolerance: 0.05 } }
+  - { id: variance-y, type: numeric, weight: 8, prerequisites: [reproduce], config: { operation: absolute-tolerance, actual: { fromEvaluator: reproduce, output: varianceY }, expected: 725.23, tolerance: 0.05 } }
+  - { id: correlation, type: numeric, weight: 8, prerequisites: [reproduce], config: { operation: absolute-tolerance, actual: { fromEvaluator: reproduce, output: correlation }, expected: -0.07, tolerance: 0.05 } }
+  - { id: circle, type: numeric, weight: 10, prerequisites: [reproduce], config: { operation: absolute-tolerance, actual: { fromEvaluator: reproduce, output: ellipseRmse }, expected: 0, tolerance: 0.35 } }

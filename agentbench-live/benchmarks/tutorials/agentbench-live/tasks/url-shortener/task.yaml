@@ -8,12 +8,23 @@ resources:
   planningRequired: true
   budget: { browserSessions: 1, sandboxes: 1, desktops: 1, totalMinutes: 5 }
 submission: { directory: submission, required: [source, results.json, methodology.md, provenance.json] }
-compatibility:
-  requiredEvidence: [sandbox, browser]
-  legacyVerifier: url-shortener
-  legacyBudgetMs: { totalMs: 300000, browserMs: 60000, sandboxMs: 180000, desktopMs: 60000 }
 evaluators:
-  - id: tutorial
+  - { id: source, type: file, weight: 10, config: { subject: source/package.json, assertion: present } }
+  - { id: results, type: schema, weight: 10, config: { subject: results.json, schema: evaluators/results.schema.json } }
+  - { id: methodology, type: file, weight: 10, config: { subject: methodology.md, assertion: min-bytes, value: 1 } }
+  - id: serve
     type: command
-    weight: 100
-    config: { command: [true] }
+    weight: 30
+    prerequisites: [source]
+    config: { argv: [node, /benchmark/tasks/url-shortener/evaluators/verify-app.mjs], network: true, background: true, publishPort: 3000, healthPath: / }
+  - id: browser
+    type: browser
+    weight: 40
+    prerequisites: [serve]
+    config:
+      actions:
+        - { type: goto, url: { fromEvaluator: serve, output: previewUrl } }
+        - { type: fill, selector: "#long-url", value: "https://example.com/agentbench" }
+        - { type: click, selector: "#shorten" }
+        - { type: assertText, selector: "#short-url", contains: "http" }
+        - { type: screenshot, role: browser-result }

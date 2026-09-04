@@ -31,6 +31,8 @@ import { createSolariServices } from "@/core/solari/clients";
 import { runSolariSmoke, type SmokeReport } from "@/core/solari/smoke";
 import { VerifierRegistry } from "@/core/verifiers/registry";
 import { createAgentToolBroker } from "@/core/tools/broker";
+import { EvaluationEngine } from "@/core/evaluators/engine";
+import { createBuiltinEvaluatorRegistry } from "@/core/evaluators/builtins";
 
 type CliMatrixOptions = { benchmarkId: string; concurrency: number };
 
@@ -190,6 +192,13 @@ export function createDefaultRuntime(): CliRuntime {
     credentials,
     createToolBroker: (input) => createAgentToolBroker({ ...input, services }),
     verifier: new VerifierRegistry(services),
+    evaluator: new EvaluationEngine({
+      registry: createBuiltinEvaluatorRegistry(services),
+      services,
+      providers,
+      credentials,
+      evidenceRoot: resolve(".agentbench/evidence"),
+    }),
     resolveSelection: (request) => catalog.resolveSelection(request),
     preflight: async () => undefined,
     createWorkspace,

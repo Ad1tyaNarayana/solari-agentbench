@@ -45,7 +45,7 @@ export default async function RunDetailPage({
         </div>
         <div className={`run-outcome run-outcome--${run.stage}`}>
           <span>{run.stage}</span>
-          <strong>{run.score?.total ?? "—"}</strong>
+          <strong>{run.primaryScore ?? run.score?.total ?? "—"}</strong>
           <small>Total score / 100</small>
         </div>
       </section>

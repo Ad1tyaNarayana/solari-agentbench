@@ -1,4 +1,6 @@
 import type { RunPlan } from "./plan";
+import type { EvaluationReport } from "@/core/evaluators/types";
+import type { EvidenceManifest } from "@/core/evidence/manifest";
 
 export type RunStage =
   | "queued"
@@ -23,7 +25,9 @@ export type FailureCode =
   | "build_failed"
   | "verification_failed"
   | "evidence_failed"
-  | "cleanup_failed";
+  | "cleanup_failed"
+  | "evaluator_error"
+  | "score_invalid";
 
 export type ReasoningEffort = "low" | "high";
 
@@ -75,4 +79,8 @@ export type RunRecord = {
   providerOptions?: Record<string, unknown>;
   toolPolicy?: Record<string, unknown>;
   usage?: { inputTokens?: number; outputTokens?: number; costUsd?: number };
+  evaluationStatus?: "valid-score" | "invalid-score";
+  primaryScore?: number | null;
+  evaluationReport?: EvaluationReport;
+  evidenceManifest?: EvidenceManifest;
 };

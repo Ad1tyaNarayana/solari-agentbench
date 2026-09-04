@@ -39,7 +39,7 @@ export async function uploadTextTree(
   destination = submissionRoot,
 ): Promise<void> {
   const requestedRoot = posix.normalize(destination);
-  if (requestedRoot !== submissionRoot && requestedRoot !== "/submission") throw new Error(`Unsupported submission root: ${destination}`);
+  if (requestedRoot !== submissionRoot && requestedRoot !== "/submission") throw new Error(`Upload destination is outside ${submissionRoot}: ${destination}`);
   const root = assertDestination(destination, requestedRoot);
   const files = Object.keys(submission.entries).sort();
   const directories = new Set([root]);

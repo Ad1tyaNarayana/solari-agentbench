@@ -13,6 +13,7 @@ import type { SubmissionPackage } from "@/core/security/package-submission";
 import type { DisposableWorkspace } from "@/core/security/workspace";
 import type { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import type { ScoreBreakdown } from "./scoring";
+import type { EvaluationEnginePort } from "@/core/evaluators/engine";
 
 export type RunRequest = {
   benchmarkId?: string;
@@ -91,7 +92,8 @@ export type OrchestratorDependencies = {
     supervisor: ResourceSupervisor;
     remainingMs(): number;
   }): AgentToolBroker;
-  verifier: VerifierRegistryPort;
+  verifier?: VerifierRegistryPort;
+  evaluator?: EvaluationEnginePort;
   resolveSelection(request: RunRequest): Promise<RunSelection>;
   preflight(selection: RunSelection): Promise<void>;
   createWorkspace(runId: string): Promise<DisposableWorkspace>;

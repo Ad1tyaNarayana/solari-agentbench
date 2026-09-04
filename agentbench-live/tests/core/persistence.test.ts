@@ -133,7 +133,7 @@ test("migrates legacy runs and round-trips snapshot comparability identity", asy
     usage: { inputTokens: 10, outputTokens: 4 },
   });
   const check = new Database(databasePath);
-  expect(check.pragma("user_version", { simple: true }) as number).toBe(3);
+  expect(check.pragma("user_version", { simple: true }) as number).toBe(4);
   check.close();
   repository.close();
   repository = undefined;
@@ -147,26 +147,26 @@ test("preserves a newer schema version when reopening an existing database", asy
   repository.close();
   repository = undefined;
   const database = new Database(databasePath);
-  database.pragma("user_version = 4");
+  database.pragma("user_version = 5");
   database.close();
 
   repository = new SqliteRunRepository(databasePath);
   repository.close();
   repository = undefined;
   const reopened = new Database(databasePath);
-  expect(reopened.pragma("user_version", { simple: true }) as number).toBe(4);
+  expect(reopened.pragma("user_version", { simple: true }) as number).toBe(5);
   reopened.close();
   await rm(directory, { recursive: true, force: true });
 });
 
-test("initializes a fresh database at schema version 3 with execution identity columns", async () => {
+test("initializes a fresh database at schema version 4 with evaluation columns", async () => {
   const directory = await mkdtemp(join(tmpdir(), "agentbench-fresh-"));
   const databasePath = join(directory, "fresh.sqlite");
   repository = new SqliteRunRepository(databasePath);
   repository.close();
   repository = undefined;
   const database = new Database(databasePath);
-  expect(database.pragma("user_version", { simple: true }) as number).toBe(3);
+  expect(database.pragma("user_version", { simple: true }) as number).toBe(4);
   expect(
     (database.pragma("table_info(runs)") as Array<{ name: string }>).map(
       (column) => column.name,
@@ -184,10 +184,26 @@ test("initializes a fresh database at schema version 3 with execution identity c
       "provider_options",
       "tool_policy",
       "usage",
+      "evaluation_status",
+      "primary_score",
+      "evaluation_report",
+      "evidence_manifest",
     ]),
   );
   database.close();
   await rm(directory, { recursive: true, force: true });
+});
+
+test("round-trips normalized evaluator reports and evidence", () => {
+  repository = new SqliteRunRepository(":memory:");
+  const run = repository.create({ taskId: "custom", agentId: "agent" });
+  const reference = { digest: "a".repeat(64), size: 1, mimeType: "text/plain", role: "result", producer: "evaluator" as const, runId: run.id, taskId: "custom", createdAt: "now", redacted: true };
+  repository.update(run.id, {
+    evaluationStatus: "valid-score", primaryScore: 75,
+    evaluationReport: { status: "valid-score", score: 75, possiblePoints: 100, results: [{ evaluatorId: "quality", status: "failed", earnedPoints: 75, possiblePoints: 100, summary: "partial", assertions: [{ id: "a", passed: false, summary: "partial", expected: 1, observed: 0.75 }], evidence: [reference], outputs: {}, metadata: {} }] },
+    evidenceManifest: { schemaVersion: 1, runId: run.id, taskId: "custom", entries: [reference] },
+  });
+  expect(repository.get(run.id)).toMatchObject({ evaluationStatus: "valid-score", primaryScore: 75, evaluationReport: { results: [{ evaluatorId: "quality" }] }, evidenceManifest: { entries: [{ digest: "a".repeat(64) }] } });
 });
 
 test("assigns monotonically increasing persisted event sequences", () => {

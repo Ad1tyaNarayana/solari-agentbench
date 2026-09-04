@@ -73,6 +73,20 @@ export function EvidencePanel({ run }: { run: RunRecord }) {
         {comparisonPlot ? <EvidenceImage src={comparisonPlot} alt="Expected and observed comparison plot" /> : null}
       </div>
 
+      {run.evaluationReport ? (
+        <div className="evaluator-results" aria-label="Evaluator results">
+          {run.evaluationReport.results.map((result) => (
+            <article className={`evaluator-card evaluator-card--${result.status}`} key={result.evaluatorId}>
+              <h3>{result.evaluatorId}</h3>
+              <p><strong>{result.status}</strong> · {display(result.earnedPoints)} / {display(result.possiblePoints)} points</p>
+              <p>{result.summary}</p>
+              {result.assertions.length ? <ul>{result.assertions.map((assertion) => <li key={assertion.id}><strong>{assertion.passed ? "Pass" : "Fail"}</strong> — {assertion.summary}{assertion.expected !== undefined || assertion.observed !== undefined ? ` · Expected: ${display(assertion.expected)} · Observed: ${display(assertion.observed)}` : ""}</li>)}</ul> : null}
+              {typeof result.metadata.provider === "string" ? <p className="retention-note">Model judge · {result.metadata.provider} · {display(result.metadata.resolvedModel)} · rubric {display(result.metadata.rubricDigest)} · prompt {display(result.metadata.promptDigest)} · retries {display(result.metadata.retryCount)}</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+
       {run.sanitizedLogs.length > 0 ? (
         <div className="log-block">
           <h3>{synthetic ? "Synthetic demo narrative" : "Sanitized verifier log"}</h3>
