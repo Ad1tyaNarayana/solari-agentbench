@@ -6,7 +6,21 @@ import type {
   SandboxHandle,
   SolariServices,
 } from "@/core/solari/contracts";
-import { runSolariSmoke } from "@/core/solari/smoke";
+import { runSolariSmoke, runSolariSmokePreflight } from "@/core/solari/smoke";
+import { createSolariServices } from "@/core/solari/clients";
+
+test("smoke preflight reports a missing Solari key without provisioning", async () => {
+  const create = vi.fn();
+  const report = await runSolariSmokePreflight("", { sandbox: { create } } as never);
+  expect(report).toEqual({ ok: false, code: "missing_credential", credential: "SOLARI_API_KEY", provisioned: false });
+  expect(create).not.toHaveBeenCalled();
+});
+
+test("an unconfigured Solari adapter is inert until a primitive is requested", async () => {
+  const services = createSolariServices("");
+  await expect(services.sandbox.listIds()).resolves.toEqual([]);
+  await expect(services.sandbox.create()).rejects.toMatchObject({ code: "missing_credential" });
+});
 
 test("smoke verifies and cleans each primitive before creating the next", async () => {
   const calls: string[] = [];

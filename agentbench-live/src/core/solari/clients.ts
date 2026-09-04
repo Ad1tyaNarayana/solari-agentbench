@@ -18,6 +18,20 @@ import type {
 
 const defaultBaseUrl = "https://api.getsolari.com";
 
+function missingCredential(): Error & { code: "missing_credential"; credential: "SOLARI_API_KEY" } {
+  return Object.assign(new Error("SOLARI_API_KEY is required to provision Solari resources"), { code: "missing_credential" as const, credential: "SOLARI_API_KEY" as const });
+}
+
+function unavailableSolariServices(): SolariServices {
+  const reject = async (): Promise<never> => { throw missingCredential(); };
+  return {
+    browser: { create: reject, listIds: async () => [], release: async () => undefined, getReplayUrl: reject },
+    sandbox: { create: reject, connect: reject, listIds: async () => [], kill: async () => undefined },
+    desktop: { create: reject, listIds: async () => [], kill: async () => undefined },
+    dispose: async () => undefined,
+  };
+}
+
 class BrowserPageAdapter implements BrowserPageHandle {
   constructor(
     private readonly page: Awaited<ReturnType<BrowserSession["newPage"]>>,
@@ -255,6 +269,7 @@ export function createSolariServices(
   apiKey: string,
   baseUrl = defaultBaseUrl,
 ): SolariServices {
+  if (!apiKey.trim()) return unavailableSolariServices();
   const browserClient = new Solari({ apiKey, baseUrl });
   const sandboxClient = new SandboxClient({ apiKey, baseUrl });
   const desktopClient = new DesktopClient({ apiKey, baseUrl });

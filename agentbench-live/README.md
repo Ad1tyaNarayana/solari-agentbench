@@ -132,6 +132,8 @@ Exercise one sandbox, one recorded browser, and one desktop sequentially; each r
 npm run agentbench -- smoke
 ```
 
+Without `SOLARI_API_KEY`, this returns a typed `missing_credential` preflight report with `provisioned: false`; it does not create a browser, sandbox, or desktop.
+
 Run one observed task:
 
 ```powershell

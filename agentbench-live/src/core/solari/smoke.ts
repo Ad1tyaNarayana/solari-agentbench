@@ -7,6 +7,21 @@ export type SmokeReport = {
   desktopScreenshotBytes: number;
 };
 
+export type SmokePreflightFailure = {
+  ok: false;
+  code: "missing_credential";
+  credential: "SOLARI_API_KEY";
+  provisioned: false;
+};
+
+export async function runSolariSmokePreflight(
+  apiKey: string | undefined,
+  services: SolariServices,
+): Promise<SmokeReport | SmokePreflightFailure> {
+  if (!apiKey?.trim()) return { ok: false, code: "missing_credential", credential: "SOLARI_API_KEY", provisioned: false };
+  return runSolariSmoke(services);
+}
+
 export async function runSolariSmoke(
   services: SolariServices,
 ): Promise<SmokeReport> {

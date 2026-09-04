@@ -28,7 +28,7 @@ import type { DryRunReport, RunRequest } from "@/core/runner/contracts";
 import { runMatrix as executeMatrix } from "@/core/runner/matrix";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { createSolariServices } from "@/core/solari/clients";
-import { runSolariSmoke, type SmokeReport } from "@/core/solari/smoke";
+import { runSolariSmokePreflight, type SmokePreflightFailure, type SmokeReport } from "@/core/solari/smoke";
 import { VerifierRegistry } from "@/core/verifiers/registry";
 import { createAgentToolBroker } from "@/core/tools/broker";
 import { EvaluationEngine } from "@/core/evaluators/engine";
@@ -41,7 +41,7 @@ export interface CliRuntime {
   runOne(request: RunRequest): Promise<RunRecord>;
   matrixSummary(options: CliMatrixOptions): Promise<string>;
   runMatrix(options: CliMatrixOptions): Promise<RunRecord[]>;
-  smoke(): Promise<SmokeReport | unknown>;
+  smoke(): Promise<SmokeReport | SmokePreflightFailure | unknown>;
   writeLine(line: string): void;
   dispose(): Promise<void>;
 }
@@ -176,7 +176,8 @@ export function createDefaultRuntime(): CliRuntime {
   mkdirSync(dirname(resolve(databasePath)), { recursive: true });
   const repository = new SqliteRunRepository(databasePath);
   const events = new RunEventBus();
-  const services = createSolariServices(process.env.SOLARI_API_KEY ?? "");
+  const solariApiKey = process.env.SOLARI_API_KEY ?? "";
+  const services = createSolariServices(solariApiKey);
   const credentials = createDefaultCredentialStore();
   const providers = createBuiltinProviderRegistry(credentials);
   const catalog = new BenchmarkCatalog(
@@ -229,7 +230,7 @@ export function createDefaultRuntime(): CliRuntime {
         tasks,
       });
     },
-    smoke: () => runSolariSmoke(services),
+    smoke: () => runSolariSmokePreflight(solariApiKey, services),
     writeLine: (line) => console.log(line),
     async dispose() {
       try {
