@@ -6,6 +6,13 @@ const IDENTITY_COLUMNS = [
   ["provider_id", "TEXT"], ["harness_id", "TEXT"], ["harness_version", "TEXT"],
 ] as const;
 
+const EXECUTION_COLUMNS = [
+  ["resolved_model", "TEXT"],
+  ["provider_options", "TEXT"],
+  ["tool_policy", "TEXT"],
+  ["usage", "TEXT"],
+] as const;
+
 function hasTable(database: Database.Database, table: string): boolean {
   return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
 }
@@ -24,6 +31,15 @@ export function migrateDatabase(database: Database.Database): void {
         if (!columns.has(name)) database.exec(`ALTER TABLE runs ADD COLUMN ${name} ${type}`);
       }
       database.pragma("user_version = 2");
+    }).immediate();
+  }
+  if (version < 3) {
+    database.transaction(() => {
+      const columns = new Set((database.pragma("table_info(runs)") as Array<{ name: string }>).map((column) => column.name));
+      for (const [name, type] of EXECUTION_COLUMNS) {
+        if (!columns.has(name)) database.exec(`ALTER TABLE runs ADD COLUMN ${name} ${type}`);
+      }
+      database.pragma("user_version = 3");
     }).immediate();
   }
 }

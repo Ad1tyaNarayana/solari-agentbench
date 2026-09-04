@@ -2,10 +2,6 @@ import "server-only";
 
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { CodexGenerator } from "@/core/agents/codex-generator";
-import { CodexPlanner } from "@/core/agents/codex-planner";
-import { runPreflight } from "@/core/agents/preflight";
-import { SpawnCommandRunner } from "@/core/agents/process";
 import {
   BenchmarkCatalog,
   BenchmarkSelectionError,
@@ -19,10 +15,15 @@ import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
 import type { RunRepository } from "@/core/persistence/repository";
 import {
+  createBuiltinProviderRegistry,
+  createDefaultCredentialStore,
+} from "@/core/providers/builtins";
+import {
   defaultSubmissionPolicy,
   packageSubmission,
 } from "@/core/security/package-submission";
 import { createWorkspace } from "@/core/security/workspace";
+import { createAgentToolBroker } from "@/core/tools/broker";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { RunQueue } from "@/core/runner/queue";
 import { createSolariServices } from "@/core/solari/clients";
@@ -95,7 +96,6 @@ export function createServerContainer(): RunApiPort {
   const repository = new SqliteRunRepository(databasePath);
   reconcileAbandonedRuns(repository);
   const events = new RunEventBus();
-  const runner = new SpawnCommandRunner();
   const queue = new RunQueue(1);
   const catalog = new BenchmarkCatalog(
     resolveBenchmarkRoots(process.env.AGENTBENCH_BENCHMARK_ROOTS),
@@ -109,28 +109,20 @@ export function createServerContainer(): RunApiPort {
     if (orchestrator) return orchestrator;
     const solariApiKey = process.env.SOLARI_API_KEY ?? "";
     const services = createSolariServices(solariApiKey);
+    const credentials = createDefaultCredentialStore();
+    const providers = createBuiltinProviderRegistry(credentials);
     orchestrator = new AgentBenchOrchestrator({
       repository,
       events,
-      planner: new CodexPlanner(runner),
-      generator: new CodexGenerator(runner),
+      providers,
+      credentials,
+      createToolBroker: (input) => createAgentToolBroker({ ...input, services }),
       verifier: new VerifierRegistry(services),
       resolveSelection: (request) => catalog.resolveSelection(request),
-      preflight: async (selection) => {
-        const result = await runPreflight(selection.agent, {
-          runner,
-          env: process.env,
-        });
-        if (!result.ok) {
-          throw new RunApiError("preflight_failed", result.detailCode);
-        }
-      },
+      preflight: async () => undefined,
       createWorkspace,
       packageSubmission: (workspace) =>
         packageSubmission(workspace, defaultSubmissionPolicy),
-      schemaPath: resolve("schemas/run-plan.schema.json"),
-      solariApiKey,
-      generationResources: { services },
     });
     return orchestrator;
   }

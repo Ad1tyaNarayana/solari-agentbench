@@ -106,6 +106,12 @@ test("migrates legacy runs and round-trips snapshot comparability identity", asy
     harnessVersion: "2026.09",
   });
   repository.update(created.id, { stage: "completed" });
+  repository.update(created.id, {
+    resolvedModel: "resolved-model",
+    providerOptions: { baseUrl: "https://api.example.test" },
+    toolPolicy: { primitives: ["sandbox"] },
+    usage: { inputTokens: 10, outputTokens: 4 },
+  });
   repository.close();
   repository = new SqliteRunRepository(databasePath);
 
@@ -121,9 +127,13 @@ test("migrates legacy runs and round-trips snapshot comparability identity", asy
     providerId: "provider-id",
     harnessId: "harness-id",
     harnessVersion: "2026.09",
+    resolvedModel: "resolved-model",
+    providerOptions: { baseUrl: "https://api.example.test" },
+    toolPolicy: { primitives: ["sandbox"] },
+    usage: { inputTokens: 10, outputTokens: 4 },
   });
   const check = new Database(databasePath);
-  expect(check.pragma("user_version", { simple: true }) as number).toBe(2);
+  expect(check.pragma("user_version", { simple: true }) as number).toBe(3);
   check.close();
   repository.close();
   repository = undefined;
@@ -137,26 +147,26 @@ test("preserves a newer schema version when reopening an existing database", asy
   repository.close();
   repository = undefined;
   const database = new Database(databasePath);
-  database.pragma("user_version = 3");
+  database.pragma("user_version = 4");
   database.close();
 
   repository = new SqliteRunRepository(databasePath);
   repository.close();
   repository = undefined;
   const reopened = new Database(databasePath);
-  expect(reopened.pragma("user_version", { simple: true }) as number).toBe(3);
+  expect(reopened.pragma("user_version", { simple: true }) as number).toBe(4);
   reopened.close();
   await rm(directory, { recursive: true, force: true });
 });
 
-test("initializes a fresh database at schema version 2 with all identity columns", async () => {
+test("initializes a fresh database at schema version 3 with execution identity columns", async () => {
   const directory = await mkdtemp(join(tmpdir(), "agentbench-fresh-"));
   const databasePath = join(directory, "fresh.sqlite");
   repository = new SqliteRunRepository(databasePath);
   repository.close();
   repository = undefined;
   const database = new Database(databasePath);
-  expect(database.pragma("user_version", { simple: true }) as number).toBe(2);
+  expect(database.pragma("user_version", { simple: true }) as number).toBe(3);
   expect(
     (database.pragma("table_info(runs)") as Array<{ name: string }>).map(
       (column) => column.name,
@@ -170,6 +180,10 @@ test("initializes a fresh database at schema version 2 with all identity columns
       "provider_id",
       "harness_id",
       "harness_version",
+      "resolved_model",
+      "provider_options",
+      "tool_policy",
+      "usage",
     ]),
   );
   database.close();

@@ -1,10 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CodexGenerator } from "@/core/agents/codex-generator";
-import { CodexPlanner } from "@/core/agents/codex-planner";
-import { runPreflight } from "@/core/agents/preflight";
-import { SpawnCommandRunner } from "@/core/agents/process";
 import {
   BenchmarkCatalog,
   BenchmarkSelectionError,
@@ -21,6 +17,10 @@ import type { TaskManifest } from "@/core/domain/task";
 import { exportPublicDemo } from "@/core/demo/seed";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
+import {
+  createBuiltinProviderRegistry,
+  createDefaultCredentialStore,
+} from "@/core/providers/builtins";
 import { defaultSubmissionPolicy, packageSubmission } from "@/core/security/package-submission";
 import { createWorkspace } from "@/core/security/workspace";
 import { estimateResources } from "@/core/runner/budget";
@@ -30,6 +30,7 @@ import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { createSolariServices } from "@/core/solari/clients";
 import { runSolariSmoke, type SmokeReport } from "@/core/solari/smoke";
 import { VerifierRegistry } from "@/core/verifiers/registry";
+import { createAgentToolBroker } from "@/core/tools/broker";
 
 type CliMatrixOptions = { benchmarkId: string; concurrency: number };
 
@@ -173,8 +174,9 @@ export function createDefaultRuntime(): CliRuntime {
   mkdirSync(dirname(resolve(databasePath)), { recursive: true });
   const repository = new SqliteRunRepository(databasePath);
   const events = new RunEventBus();
-  const runner = new SpawnCommandRunner();
   const services = createSolariServices(process.env.SOLARI_API_KEY ?? "");
+  const credentials = createDefaultCredentialStore();
+  const providers = createBuiltinProviderRegistry(credentials);
   const catalog = new BenchmarkCatalog(
     resolveBenchmarkRoots(process.env.AGENTBENCH_BENCHMARK_ROOTS),
     new BenchmarkLoader(
@@ -184,25 +186,15 @@ export function createDefaultRuntime(): CliRuntime {
   const orchestrator = new AgentBenchOrchestrator({
     repository,
     events,
-    planner: new CodexPlanner(runner),
-    generator: new CodexGenerator(runner),
+    providers,
+    credentials,
+    createToolBroker: (input) => createAgentToolBroker({ ...input, services }),
     verifier: new VerifierRegistry(services),
     resolveSelection: (request) => catalog.resolveSelection(request),
-    preflight: async (selection) => {
-      const preflight = await runPreflight(selection.agent, {
-        runner,
-        env: process.env,
-      });
-      if (!preflight.ok) {
-        throw new Error(`Preflight failed: ${preflight.detailCode}`);
-      }
-    },
+    preflight: async () => undefined,
     createWorkspace,
     packageSubmission: (workspace) =>
       packageSubmission(workspace, defaultSubmissionPolicy),
-    schemaPath: resolve("schemas/run-plan.schema.json"),
-    solariApiKey: process.env.SOLARI_API_KEY ?? "",
-    generationResources: { services },
   });
 
   return {

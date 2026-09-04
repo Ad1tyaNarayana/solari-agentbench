@@ -220,7 +220,7 @@ function threadOptions(
   };
 }
 
-export function buildCodexPlannerPrompt(task: PlanTask): string {
+export function buildCodexPlanningPrompt(task: PlanTask): string {
   const requiredEvidence = task.compatibility?.requiredEvidence ?? [];
   return [
     `Choose the Solari primitives for task ${task.id}.`,
@@ -420,7 +420,7 @@ export class CodexSdkProvider
     const thread = codex.startThread(
       threadOptions(input.agent, input.snapshot.root, "read-only"),
     );
-    const result = await thread.run(buildCodexPlannerPrompt(input.task), {
+    const result = await thread.run(buildCodexPlanningPrompt(input.task), {
       outputSchema: runPlanOutputJsonSchema(),
       signal,
     });

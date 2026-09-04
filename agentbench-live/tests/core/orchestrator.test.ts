@@ -1,18 +1,16 @@
 import { expect, test } from "vitest";
 import type { BenchmarkSnapshot } from "@/core/benchmarks/snapshot";
 import type { BenchmarkDefinition } from "@/core/benchmarks/types";
+import { AgentFailedError } from "@/core/providers/errors";
+import { AgentProviderRegistry } from "@/core/providers/registry";
+import type { AgentProvider } from "@/core/providers/types";
 import type { RunPlan } from "@/core/domain/plan";
 import type { AgentConfig } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
 import type { DisposableWorkspace } from "@/core/security/workspace";
-import type {
-  GeneratorPort,
-  PlannerPort,
-  RunSelection,
-  VerifierRegistryPort,
-} from "@/core/runner/contracts";
+import type { RunSelection, VerifierRegistryPort } from "@/core/runner/contracts";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 
 const task: TaskManifest = {
@@ -49,7 +47,25 @@ const benchmark: BenchmarkDefinition = {
     maxConcurrency: 1,
     submissionDirectory: "submission",
   },
-  tasks: [],
+  tasks: [
+    {
+      id: task.id,
+      name: task.title,
+      promptPath: "tasks/url-shortener/prompt.md",
+      prompt: task.prompt,
+      fixtures: [],
+      allowedPrimitives: task.allowedPrimitives,
+      planningRequired: true,
+      resourceLimits: {
+        browserSessions: 1,
+        sandboxes: 1,
+        desktops: 1,
+        totalMinutes: 5,
+      },
+      submission: { directory: "submission", required: ["results.json"] },
+      evaluators: [],
+    },
+  ],
   agents: [
     {
       id: agent.id,
@@ -84,6 +100,7 @@ function createHarness(options: {
   }>;
   now?: () => number;
   plannerNeverResolves?: boolean;
+  generatorNeverResolves?: boolean;
   afterPlan?: () => void;
   afterGeneration?: () => void;
   duringVerification?: (remainingMs: number) => void;
@@ -113,11 +130,23 @@ function createHarness(options: {
   };
   const observedVerificationStages: string[] = [];
   const generationCleanup: string[] = [];
-  let lateGenerationResourceAvailable = false;
-  const planner: PlannerPort & { calls: unknown[] } = {
-    calls: [],
+  let prepareProviderResources = () => undefined;
+  const planCalls: unknown[] = [];
+  const executeCalls: unknown[] = [];
+  let cancellationCalls = 0;
+  const provider: AgentProvider = {
+    describe: () => ({
+      id: "codex",
+      name: "Fake Codex",
+      adapterVersion: "test",
+      capabilities: { planning: true, streaming: true, tools: true, structuredCompletion: false },
+      optionsSchema: { type: "object" },
+    }),
+    async preflight() {
+      return { ok: true };
+    },
     async plan(input) {
-      this.calls.push(input);
+      planCalls.push({ ...input, timeoutMs: input.remainingMs() });
       operationOrder.push("planning");
       if (options.plannerNeverResolves) {
         return new Promise<never>(() => undefined);
@@ -125,51 +154,43 @@ function createHarness(options: {
       options.afterPlan?.();
       return plan;
     },
-  };
-  const generator: GeneratorPort & { calls: unknown[] } = {
-    calls: [],
-    async generate(input) {
-      this.calls.push(input);
+    async execute(input, sink) {
+      executeCalls.push({ ...input, timeoutMs: input.remainingMs() });
       operationOrder.push("generation");
-      if (options.generatorError) throw options.generatorError;
-      if (options.lateGenerationResourceMs !== undefined) {
-        await new Promise((resolveDelay) =>
-          setTimeout(resolveDelay, options.lateGenerationResourceMs),
-        );
-        lateGenerationResourceAvailable = true;
-      }
-      options.afterGeneration?.();
-      return {
-        stdout: "generated",
-        stderr: "",
-        events: options.generationResourceViolation
-          ? [
-              {
-                type: "item.completed",
-                item: {
-                  type: "mcp_tool_call",
-                  server: "solari",
-                  tool: "solari_desktop_create",
-                  result: { sessionId: "desktop-1" },
-                },
-              },
-            ]
-          : options.generationInventoryError
-            ? [
-                {
-                  type: "item.completed",
-                  item: {
-                    type: "mcp_tool_call",
-                    server: "solari",
-                    tool: "solari_sandbox_create",
-                    result: { sandboxId: "sandbox-from-event" },
-                  },
-                },
-              ]
-          : [],
-      };
+      const result = (async () => {
+        await sink.emit("message", { text: "provider progress" });
+        if (options.generatorNeverResolves) {
+          return await new Promise<never>(() => undefined);
+        }
+        if (options.generatorError) throw options.generatorError;
+        if (options.lateGenerationResourceMs !== undefined) {
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, options.lateGenerationResourceMs));
+        }
+        prepareProviderResources();
+        options.afterGeneration?.();
+        if (options.generationResourceViolation) {
+          throw new AgentFailedError(
+            "desktop primitive was not approved; sandbox primitive created 2 resources (maximum 1)",
+            "codex",
+          );
+        }
+        if (options.generationInventoryError) {
+          throw new AgentFailedError("inventory unavailable", "codex");
+        }
+        return {
+          resolvedModel: input.agent.model,
+          usage: { inputTokens: 10, outputTokens: 4 },
+          finalResponse: "generated",
+        };
+      })();
+      return { handle: { id: "fake-run" }, result };
     },
+    async cancel() { cancellationCalls += 1; },
   };
+  const providers = new AgentProviderRegistry();
+  providers.register("codex", provider);
+  const planner = { calls: planCalls };
+  const generator = { calls: executeCalls };
   const verifier: VerifierRegistryPort & { calls: unknown[] } = {
     calls: [],
     async verify(input) {
@@ -222,55 +243,46 @@ function createHarness(options: {
   let workspaceCalls = 0;
   let selectionCalls = 0;
   const preflightSelections: RunSelection[] = [];
-  let sandboxLists = 0;
-  let desktopLists = 0;
-  const generationResources =
-    options.generationResourceViolation ||
-    options.generationInventoryError ||
-    options.lateGenerationResourceMs !== undefined
-    ? {
-        services: {
-          browser: {
-            async listIds() {
-              return [];
-            },
-            async release(id: string) {
-              generationCleanup.push(`browser:${id}`);
-            },
-          },
-          sandbox: {
-            async listIds() {
-              sandboxLists += 1;
-              if (options.generationInventoryError && sandboxLists === 2) {
-                throw new Error("inventory unavailable");
-              }
-              if (options.lateGenerationResourceMs !== undefined) {
-                return lateGenerationResourceAvailable ? ["sandbox-late"] : [];
-              }
-              return sandboxLists === 1 ? [] : ["sandbox-1", "sandbox-2"];
-            },
-            async kill(id: string) {
-              generationCleanup.push(`sandbox:${id}`);
-            },
-          },
-          desktop: {
-            async listIds() {
-              desktopLists += 1;
-              if (options.lateGenerationResourceMs !== undefined) return [];
-              return desktopLists === 1 ? [] : ["desktop-1"];
-            },
-            async kill(id: string) {
-              generationCleanup.push(`desktop:${id}`);
-            },
-          },
-        },
-      }
-    : undefined;
+  const sandboxLists = 0;
   const orchestrator = new AgentBenchOrchestrator({
     repository,
     events,
-    planner,
-    generator,
+    providers,
+    credentials: {
+      listMetadata: async () => [],
+      has: async () => true,
+      withCredential: async () => { throw new Error("not used"); },
+    },
+    createToolBroker: ({ supervisor }) => {
+      prepareProviderResources = () => {
+        if (options.generationResourceViolation) {
+          supervisor.trackDesktop({
+            id: "desktop-1",
+            kill: async () => { generationCleanup.push("desktop:desktop-1"); },
+          });
+          for (const id of ["sandbox-1", "sandbox-2"]) {
+            supervisor.trackSandbox({
+              id,
+              kill: async () => { generationCleanup.push(`sandbox:${id}`); },
+            });
+          }
+        } else if (options.generationInventoryError) {
+          supervisor.trackSandbox({
+            id: "sandbox-from-event",
+            kill: async () => {
+              generationCleanup.push("sandbox:sandbox-from-event");
+              throw new Error("inventory unavailable");
+            },
+          });
+        } else if (options.lateGenerationResourceMs !== undefined) {
+          supervisor.trackSandbox({
+            id: "sandbox-late",
+            kill: async () => { generationCleanup.push("sandbox:sandbox-late"); },
+          });
+        }
+      };
+      return { listDefinitions: () => [], invoke: async () => undefined };
+    },
     verifier,
     resolveSelection: async (request) => {
       selectionCalls += 1;
@@ -296,11 +308,8 @@ function createHarness(options: {
       },
       digest: "digest",
     }),
-    schemaPath: "C:\\schemas\\run-plan.schema.json",
-    solariApiKey: "test-key",
     now: options.now,
     cleanupGraceMs: options.cleanupGraceMs,
-    generationResources: generationResources as never,
   });
   return {
     repository,
@@ -320,6 +329,9 @@ function createHarness(options: {
     },
     get selectionCalls() {
       return selectionCalls;
+    },
+    get cancellationCalls() {
+      return cancellationCalls;
     },
     preflightSelections,
     operationOrder,
@@ -360,7 +372,7 @@ test("persists the complete successful lifecycle and score", async () => {
   const seen: string[] = [];
   const originalPublish = harness.events.publish.bind(harness.events);
   harness.events.publish = (runId, event) => {
-    seen.push(String(event.payload.stage));
+    if (event.kind === "stage") seen.push(String(event.payload.stage));
     originalPublish(runId, event);
   };
   const run = await harness.orchestrator.run({
@@ -419,6 +431,54 @@ test("creates a durable loading run with snapshot and provider identity before e
   harness.repository.close();
 });
 
+test("persists and publishes the identical normalized provider event envelope", async () => {
+  const harness = createHarness();
+  const published: unknown[] = [];
+  const originalPublish = harness.events.publish.bind(harness.events);
+  harness.events.publish = (runId, event) => {
+    if (event.kind === "provider_event") published.push(event);
+    originalPublish(runId, event);
+  };
+
+  const run = await harness.orchestrator.run({
+    taskId: "url-shortener",
+    agentId: "sol-low",
+  });
+
+  const persisted = harness.repository
+    .listEvents(run.id)
+    .filter((event) => event.kind === "provider_event");
+  expect(persisted).toHaveLength(1);
+  expect(published).toEqual(persisted);
+  expect(persisted[0].payload).toEqual(expect.objectContaining({
+    schemaVersion: 1,
+    sequence: 1,
+    kind: "message",
+    provider: "codex",
+    payload: { text: "provider progress" },
+  }));
+  expect(run).toMatchObject({
+    resolvedModel: "gpt-5.6-sol",
+    providerOptions: {},
+    toolPolicy: { primitives: ["sandbox", "browser"] },
+    usage: { inputTokens: 10, outputTokens: 4 },
+  });
+  harness.repository.close();
+});
+
+test("aborts and cancels the provider once when execution exceeds the run deadline", async () => {
+  const harness = createHarness({ generatorNeverResolves: true, taskBudgetMs: 20 });
+
+  const run = await harness.orchestrator.run({
+    taskId: "url-shortener",
+    agentId: "sol-low",
+  });
+
+  expect(run).toMatchObject({ stage: "failed", failureCode: "agent_timeout" });
+  expect(harness.cancellationCalls).toBe(1);
+  harness.repository.close();
+});
+
 test("passes the exact selection created from the snapshot through preflight, planning, and generation", async () => {
   let sourcePrompt = "Prompt captured before the source edit.";
   let selected: RunSelection | undefined;
@@ -455,21 +515,21 @@ test("passes the exact selection created from the snapshot through preflight, pl
   expect(harness.preflightSelections[0].agent).toBe(created.selection.agent);
 
   const plannerInput = harness.planner.calls[0] as {
-    task: TaskManifest;
-    agent: AgentConfig;
+    task: { prompt: string };
+    agent: { id: string };
   };
-  expect(plannerInput.task).toBe(created.selection.task);
-  expect(plannerInput.agent).toBe(created.selection.agent);
+  expect(plannerInput.task.prompt).toBe(created.selection.task.prompt);
+  expect(plannerInput.agent.id).toBe(created.selection.agent.id);
   expect(plannerInput.task.prompt).toBe(
     "Prompt captured before the source edit.",
   );
 
   const generatorInput = harness.generator.calls[0] as {
-    agent: AgentConfig;
-    taskPrompt: string;
+    agent: { id: string };
+    task: { prompt: string };
   };
-  expect(generatorInput.agent).toBe(created.selection.agent);
-  expect(generatorInput.taskPrompt).toBe(
+  expect(generatorInput.agent.id).toBe(created.selection.agent.id);
+  expect(generatorInput.task.prompt).toBe(
     "Prompt captured before the source edit.",
   );
 
@@ -692,7 +752,6 @@ test("uses cleanup grace for inventory and teardown after generation exceeds the
     stage: "failed",
     failureCode: "agent_timeout",
   });
-  expect(harness.sandboxLists).toBeGreaterThanOrEqual(2);
   expect(harness.generationCleanup).toEqual(["sandbox:sandbox-late"]);
   expect(harness.verifier.calls).toHaveLength(0);
   harness.repository.close();

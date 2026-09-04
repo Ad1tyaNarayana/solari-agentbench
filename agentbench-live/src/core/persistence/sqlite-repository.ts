@@ -39,6 +39,10 @@ type RunRow = {
   provider_id: string | null;
   harness_id: string | null;
   harness_version: string | null;
+  resolved_model: string | null;
+  provider_options: string | null;
+  tool_policy: string | null;
+  usage: string | null;
 };
 
 type EventRow = {
@@ -83,6 +87,10 @@ function fromRunRow(row: RunRow): RunRecord {
     providerId: row.provider_id ?? undefined,
     harnessId: row.harness_id ?? undefined,
     harnessVersion: row.harness_version ?? undefined,
+    resolvedModel: row.resolved_model ?? undefined,
+    providerOptions: optionalJson(row.provider_options),
+    toolPolicy: optionalJson(row.tool_policy),
+    usage: optionalJson(row.usage),
   };
 }
 
@@ -111,7 +119,7 @@ export class SqliteRunRepository implements RunRepository {
     } else {
       this.database.transaction(() => {
         this.database.exec(schema);
-        this.database.pragma("user_version = 2");
+        this.database.pragma("user_version = 3");
       }).immediate();
     }
   }
@@ -216,8 +224,9 @@ export class SqliteRunRepository implements RunRepository {
         last_successful_stage, run_plan, score, evidence, failure_code,
         failure_detail, sanitized_logs, created_at, started_at, completed_at,
         duration_ms, cleanup_issues, benchmark_id, benchmark_version, benchmark_digest,
-        snapshot_path, provider_id, harness_id, harness_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        snapshot_path, provider_id, harness_id, harness_version, resolved_model,
+        provider_options, tool_policy, usage
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         record.id,
         record.taskId,
@@ -245,6 +254,10 @@ export class SqliteRunRepository implements RunRepository {
         record.providerId ?? null,
         record.harnessId ?? null,
         record.harnessVersion ?? null,
+        record.resolvedModel ?? null,
+        record.providerOptions ? JSON.stringify(record.providerOptions) : null,
+        record.toolPolicy ? JSON.stringify(record.toolPolicy) : null,
+        record.usage ? JSON.stringify(record.usage) : null,
       );
   }
 
@@ -255,7 +268,8 @@ export class SqliteRunRepository implements RunRepository {
         last_successful_stage = ?, run_plan = ?, score = ?, evidence = ?,
         failure_code = ?, failure_detail = ?, sanitized_logs = ?, started_at = ?,
         completed_at = ?, duration_ms = ?, cleanup_issues = ?, benchmark_id = ?, benchmark_version = ?,
-        benchmark_digest = ?, snapshot_path = ?, provider_id = ?, harness_id = ?, harness_version = ?
+        benchmark_digest = ?, snapshot_path = ?, provider_id = ?, harness_id = ?, harness_version = ?,
+        resolved_model = ?, provider_options = ?, tool_policy = ?, usage = ?
       WHERE id = ?`)
       .run(
         record.taskVersion ?? null,
@@ -280,6 +294,10 @@ export class SqliteRunRepository implements RunRepository {
         record.providerId ?? null,
         record.harnessId ?? null,
         record.harnessVersion ?? null,
+        record.resolvedModel ?? null,
+        record.providerOptions ? JSON.stringify(record.providerOptions) : null,
+        record.toolPolicy ? JSON.stringify(record.toolPolicy) : null,
+        record.usage ? JSON.stringify(record.usage) : null,
         record.id,
       );
   }

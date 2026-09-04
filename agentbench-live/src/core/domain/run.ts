@@ -71,4 +71,8 @@ export type RunRecord = {
   providerId?: string;
   harnessId?: string;
   harnessVersion?: string;
+  resolvedModel?: string;
+  providerOptions?: Record<string, unknown>;
+  toolPolicy?: Record<string, unknown>;
+  usage?: { inputTokens?: number; outputTokens?: number; costUsd?: number };
 };

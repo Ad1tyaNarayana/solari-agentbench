@@ -1,5 +1,5 @@
 import type { JsonlEvent } from "@/core/agents/jsonl";
-import { solariPrimitivesForTool } from "@/core/agents/codex-generator";
+import { solariPrimitivesForTool } from "@/core/providers/codex-sdk";
 import type { Primitive } from "@/core/domain/plan";
 import type { CleanupIssue } from "@/core/domain/run";
 import type {

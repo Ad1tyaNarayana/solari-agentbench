@@ -7,6 +7,8 @@ import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import type { RunPlan } from "@/core/domain/plan";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
+import { AgentProviderRegistry } from "@/core/providers/registry";
+import type { AgentProvider } from "@/core/providers/types";
 import type { DisposableWorkspace } from "@/core/security/workspace";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { runMatrix } from "@/core/runner/matrix";
@@ -21,7 +23,13 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
   const preflightDigests: string[] = [];
   let active = 0;
   let peak = 0;
-  const planner = {
+  const provider: AgentProvider = {
+    describe: () => ({
+      id: "codex", name: "Fake Codex", adapterVersion: "test",
+      capabilities: { planning: true, streaming: true, tools: true, structuredCompletion: false },
+      optionsSchema: { type: "object" },
+    }),
+    async preflight() { return { ok: true }; },
     async plan(): Promise<RunPlan> {
       return {
         primitives: ["sandbox"],
@@ -29,16 +37,21 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
         verificationStrategy: "fresh execution",
       };
     },
-  };
-  const generator = {
-    async generate() {
+    async execute(input) {
       active += 1;
       peak = Math.max(peak, active);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      active -= 1;
-      return { stdout: "", stderr: "", events: [] };
+      return {
+        handle: { id: `${input.agent.id}-${input.task.id}` },
+        result: new Promise((resolveResult) => setTimeout(() => {
+          active -= 1;
+          resolveResult({ resolvedModel: input.agent.model });
+        }, 5)),
+      };
     },
+    async cancel() {},
   };
+  const providers = new AgentProviderRegistry();
+  providers.register("codex", provider);
   const verifier = {
     async verify(context: {
       onStage(stage: "provisioning" | "building" | "verifying" | "capturing"): void;
@@ -68,8 +81,12 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
   const orchestrator = new AgentBenchOrchestrator({
     repository,
     events: new RunEventBus(),
-    planner,
-    generator,
+    providers,
+    credentials: {
+      listMetadata: async () => [], has: async () => true,
+      withCredential: async () => { throw new Error("not used"); },
+    },
+    createToolBroker: () => ({ listDefinitions: () => [], invoke: async () => undefined }),
     verifier,
     resolveSelection: (request) => catalog.resolveSelection(request),
     preflight: async (selection) => {
@@ -88,8 +105,6 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
       },
       digest: "digest",
     }),
-    schemaPath: "C:\\schemas\\run-plan.schema.json",
-    solariApiKey: "test-key",
   });
 
   try {

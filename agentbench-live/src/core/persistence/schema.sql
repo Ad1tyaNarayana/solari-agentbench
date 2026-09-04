@@ -26,7 +26,11 @@ CREATE TABLE IF NOT EXISTS runs (
   snapshot_path TEXT,
   provider_id TEXT,
   harness_id TEXT,
-  harness_version TEXT
+  harness_version TEXT,
+  resolved_model TEXT,
+  provider_options TEXT,
+  tool_policy TEXT,
+  usage TEXT
 );
 
 

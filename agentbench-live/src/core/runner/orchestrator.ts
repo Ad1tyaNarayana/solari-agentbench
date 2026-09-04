@@ -1,23 +1,13 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
-import {
-  AgentProcessError,
-  AgentTimeoutError,
-  PlanInvalidError,
-} from "@/core/agents/codex-planner";
+import type { AgentDefinition, BenchmarkTaskDefinition } from "@/core/benchmarks/types";
+import { redactCredentialOutput } from "@/core/credentials/redaction";
 import type { RunPlan } from "@/core/domain/plan";
 import type { FailureCode, RunRecord, RunStage } from "@/core/domain/run";
-import type { AgentConfig } from "@/core/domain/run";
-import type { TaskManifest } from "@/core/domain/task";
+import { createAgentEventSink } from "@/core/providers/events";
+import { AgentTimeoutError } from "@/core/providers/errors";
+import type { AgentProvider, ProviderExecutionResult } from "@/core/providers/types";
 import { redact } from "@/core/security/redact";
 import type { DisposableWorkspace } from "@/core/security/workspace";
-import {
-  auditGeneratedResources,
-  captureInventory,
-  ResourceSupervisor,
-  trackGeneratedResources,
-} from "@/core/solari/resource-supervisor";
+import { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import { transition } from "./state-machine";
 import { applyBudgetOutcome } from "./scoring";
 import type { ScoreBreakdown } from "./scoring";
@@ -35,15 +25,30 @@ export class AgentBenchOrchestrator {
   async dryRun(request: RunRequest): Promise<DryRunReport> {
     const selection = await this.dependencies.resolveSelection(request);
     const { task, agent } = selection;
+    const { agentDefinition, taskDefinition, provider } =
+      this.providerSelection(selection);
     await this.dependencies.preflight(selection);
+    await provider.preflight({
+      agent: agentDefinition,
+      task: taskDefinition,
+      snapshot: selection.snapshot,
+    });
     const now = this.dependencies.now ?? Date.now;
     const deadlineAt = now() + task.budget.totalMs;
     const remainingMs = () => this.remainingMs(deadlineAt, now);
-    const plan = await this.runWithDeadline(
-      "planning",
-      remainingMs,
-      () => this.plan(`dry-${now()}`, task, agent, remainingMs),
-    );
+    const controller = new AbortController();
+    const plan = await this.runWithDeadline("planning", remainingMs, () =>
+      provider.plan({
+        agent: agentDefinition,
+        task: taskDefinition,
+        snapshot: selection.snapshot,
+        remainingMs,
+      }, controller.signal),
+    ).catch((error: unknown) => {
+      controller.abort(error);
+      throw error;
+    });
+    const description = provider.describe();
     return {
       taskId: task.id,
       agentId: agent.id,
@@ -51,6 +56,13 @@ export class AgentBenchOrchestrator {
       budget: task.budget,
       requiredEvidence: task.requiredEvidence,
       estimatedMaximumMinutes: task.budget.totalMs / 60_000,
+      provider: description.id,
+      providerCapabilities: { ...description.capabilities },
+      credentialConfigured: agentDefinition.credential === undefined
+        ? true
+        : await this.dependencies.credentials.has(agentDefinition.credential),
+      plannedTools: [...plan.primitives],
+      networkUse: description.id !== "codex",
     };
   }
 
@@ -95,6 +107,8 @@ export class AgentBenchOrchestrator {
 
   async runCreated(id: string, selection: RunSelection): Promise<RunRecord> {
     const { task, agent } = selection;
+    const { agentDefinition, taskDefinition, provider } =
+      this.providerSelection(selection);
     const created = this.requireRun(id);
     if (
       created.stage !== "loading" ||
@@ -145,13 +159,25 @@ export class AgentBenchOrchestrator {
 
     try {
       run = this.move(run, "preflight");
-      await runWithDeadline("preflight", () =>
-        this.dependencies.preflight(selection),
-      );
+      await runWithDeadline("preflight", async () => {
+        await this.dependencies.preflight(selection);
+        await provider.preflight({
+          agent: agentDefinition,
+          task: taskDefinition,
+          snapshot: selection.snapshot,
+        });
+      });
       run = this.move(run, "planning");
-      const plan = await runWithDeadline("planning", () =>
-        this.plan(run.id, task, agent, remainingMs),
-      );
+      const planningController = new AbortController();
+      const plan = await runWithDeadline("planning", () => provider.plan({
+        agent: agentDefinition,
+        task: taskDefinition,
+        snapshot: selection.snapshot,
+        remainingMs,
+      }, planningController.signal)).catch((error: unknown) => {
+        planningController.abort(error);
+        throw error;
+      });
       run = this.dependencies.repository.update(run.id, { runPlan: plan });
 
       workspace = await acquireWithDeadline(
@@ -160,14 +186,23 @@ export class AgentBenchOrchestrator {
         (lateWorkspace) => lateWorkspace.dispose(),
       );
       run = this.move(run, "generating");
-      await this.generate(run, {
-        agent,
+      const providerResult = await this.executeProvider({
+        run,
+        provider,
+        agent: agentDefinition,
+        task: taskDefinition,
+        snapshot: selection.snapshot,
         plan,
-        taskPrompt: task.prompt,
         workspace,
-        solariApiKey: this.dependencies.solariApiKey,
-        timeoutMs: remainingMs(),
-      }, remainingMs, runWithCleanupGrace);
+        remainingMs,
+        runWithCleanupGrace,
+      });
+      run = this.dependencies.repository.update(run.id, {
+        resolvedModel: providerResult.resolvedModel,
+        providerOptions: redactCredentialOutput(agentDefinition.options) as Record<string, unknown>,
+        toolPolicy: { primitives: plan.primitives },
+        usage: providerResult.usage,
+      });
       const submission = await runWithDeadline("submission packaging", () =>
         this.dependencies.packageSubmission(workspace!),
       );
@@ -259,40 +294,6 @@ export class AgentBenchOrchestrator {
     return run;
   }
 
-  private async plan(
-    runId: string,
-    task: TaskManifest,
-    agent: AgentConfig,
-    remainingMs: () => number,
-  ): Promise<RunPlan> {
-    const temporaryRoot = await realpath(tmpdir());
-    const directory = await mkdtemp(join(temporaryRoot, "agentbench-plan-"));
-    try {
-      return await this.dependencies.planner.plan({
-        agent,
-        task,
-        schemaPath: this.dependencies.schemaPath,
-        outputPath: join(directory, `${runId}.json`),
-        plannerPrompt: [
-          `Choose the Solari primitives for task ${task.id}.`,
-          `Allowed primitives: ${task.allowedPrimitives.join(", ")}.`,
-          `Required verifier evidence: ${task.requiredEvidence.join(", ")}.`,
-          "Explain every selected primitive and state the verification strategy.",
-        ].join("\n"),
-        timeoutMs: Math.min(remainingMs(), 120_000),
-      });
-    } finally {
-      const resolved = await realpath(directory);
-      if (
-        dirname(resolved) !== temporaryRoot ||
-        !basename(resolved).startsWith("agentbench-plan-")
-      ) {
-        throw new Error(`Refusing to remove unsafe plan directory: ${resolved}`);
-      }
-      await rm(resolved, { recursive: true, force: false });
-    }
-  }
-
   private move(
     run: RunRecord,
     stage: Exclude<RunStage, "failed">,
@@ -359,10 +360,9 @@ export class AgentBenchOrchestrator {
     ) {
       return error.code as FailureCode;
     }
-    if (error instanceof PlanInvalidError) return "plan_invalid";
     if (stage === "preflight") return "preflight_failed";
     if (error instanceof AgentTimeoutError) return "agent_timeout";
-    if (error instanceof AgentProcessError || stage === "generating") {
+    if (stage === "generating") {
       return "agent_failed";
     }
     if (stage === "provisioning") return "provision_failed";
@@ -378,94 +378,111 @@ export class AgentBenchOrchestrator {
     return run;
   }
 
-  private async generate(
-    run: RunRecord,
-    input: Parameters<OrchestratorDependencies["generator"]["generate"]>[0],
-    remainingMs: () => number,
-    runWithCleanupGrace: <T>(
-      label: string,
-      operation: () => Promise<T>,
-    ) => Promise<T>,
-  ): Promise<void> {
-    const resources = this.dependencies.generationResources;
-    if (!resources) {
-      await this.dependencies.generator.generate({
-        ...input,
-        timeoutMs: remainingMs(),
-      });
-      return;
-    }
-
-    const before = await this.runWithDeadline(
-      "pre-generation resource inventory",
-      remainingMs,
-      () => captureInventory(resources.services),
+  private providerSelection(selection: RunSelection): {
+    agentDefinition: AgentDefinition;
+    taskDefinition: BenchmarkTaskDefinition;
+    provider: AgentProvider;
+  } {
+    const agentDefinition = selection.benchmark.agents.find(
+      (candidate) => candidate.id === selection.agent.id,
     );
-    let generationEvents: Awaited<
-      ReturnType<OrchestratorDependencies["generator"]["generate"]>
-    >["events"] = [];
-    let primaryError: unknown;
-    try {
-      generationEvents = (
-        await this.dependencies.generator.generate({
-          ...input,
-          timeoutMs: remainingMs(),
-        })
-      ).events;
-    } catch (error) {
-      primaryError = error;
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "events" in error &&
-        Array.isArray(error.events)
-      ) {
-        generationEvents = error.events;
-      }
+    const benchmarkTask = selection.benchmark.tasks.find(
+      (candidate) => candidate.id === selection.task.id,
+    );
+    if (!agentDefinition || !benchmarkTask) {
+      throw new Error("Resolved selection is missing its benchmark definitions");
     }
+    const taskDefinition: BenchmarkTaskDefinition = {
+      ...benchmarkTask,
+      prompt: selection.task.prompt,
+      allowedPrimitives: [...selection.task.allowedPrimitives],
+    };
+    return {
+      agentDefinition,
+      taskDefinition,
+      provider: this.dependencies.providers.get(agentDefinition.provider),
+    };
+  }
 
-    let after = before;
+  private async executeProvider(input: {
+    run: RunRecord;
+    provider: AgentProvider;
+    agent: AgentDefinition;
+    task: BenchmarkTaskDefinition;
+    snapshot: RunSelection["snapshot"];
+    plan: RunPlan;
+    workspace: DisposableWorkspace;
+    remainingMs(): number;
+    runWithCleanupGrace<T>(label: string, operation: () => Promise<T>): Promise<T>;
+  }): Promise<ProviderExecutionResult> {
+    const supervisor = new ResourceSupervisor();
+    const sink = createAgentEventSink({
+      provider: input.provider.describe().id,
+      redact: (value) => redact(value, { localRoots: [input.workspace.root] }),
+      publish: (providerEvent) => {
+        const event = this.dependencies.repository.appendEvent(input.run.id, {
+          kind: "provider_event",
+          payload: { ...providerEvent },
+        });
+        this.dependencies.events.publish(input.run.id, event);
+      },
+    });
+    const tools = this.dependencies.createToolBroker({
+      workspace: input.workspace,
+      plan: input.plan,
+      sink,
+      supervisor,
+      remainingMs: input.remainingMs,
+    });
+    const controller = new AbortController();
+    let execution: Awaited<ReturnType<AgentProvider["execute"]>> | undefined;
     try {
-      after = await runWithCleanupGrace("post-generation resource inventory", () =>
-        captureInventory(resources.services),
+      execution = await input.provider.execute({
+        agent: input.agent,
+        task: input.task,
+        snapshot: input.snapshot,
+        plan: input.plan,
+        workspace: input.workspace,
+        tools,
+        remainingMs: input.remainingMs,
+      }, sink, controller.signal);
+      return await this.runWithDeadline(
+        "provider execution",
+        input.remainingMs,
+        () => execution!.result,
       );
     } catch (error) {
-      const detail = `generation resource inventory: ${error instanceof Error ? error.message : String(error)}`;
-      this.recordCleanupIssue(run.id, detail);
-      primaryError ??= new AgentProcessError(detail);
-    }
-
-    try {
-      const audit = auditGeneratedResources({
-        approvedPrimitives: input.plan.primitives,
-        before,
-        after,
-        events: generationEvents,
-      });
-      const supervisor = new ResourceSupervisor();
-      trackGeneratedResources({
-        before,
-        after,
-        events: generationEvents,
-        services: resources.services,
-        supervisor,
-      });
-      for (const issue of await runWithCleanupGrace(
-        "generated resource cleanup",
-        () => supervisor.cleanup(),
-      )) {
-        this.recordCleanupIssue(run.id, issue.detail);
+      controller.abort(error);
+      if (execution) {
+        try {
+          await input.runWithCleanupGrace(
+            "provider cancellation",
+            () => input.provider.cancel(execution!.handle),
+          );
+        } catch (cancelError) {
+          this.recordCleanupIssue(
+            input.run.id,
+            `provider cancellation: ${cancelError instanceof Error ? cancelError.message : String(cancelError)}`,
+          );
+        }
       }
-      if (audit.violations.length > 0 && !primaryError) {
-        primaryError = new AgentProcessError(audit.violations.join("; "));
+      throw error;
+    } finally {
+      sink.close();
+      try {
+        for (const issue of await input.runWithCleanupGrace(
+          "provider resource cleanup",
+          () => supervisor.cleanup(),
+        )) {
+          this.recordCleanupIssue(input.run.id, issue.detail);
+        }
+      } catch (cleanupError) {
+        this.recordCleanupIssue(
+          input.run.id,
+          `provider resource cleanup: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
       }
-    } catch (error) {
-      const detail = `generation resource cleanup: ${error instanceof Error ? error.message : String(error)}`;
-      this.recordCleanupIssue(run.id, detail);
-      primaryError ??= new AgentProcessError(detail);
     }
-
-    if (primaryError) throw primaryError;
   }
 
   private remainingMs(deadlineAt: number, now: () => number): number {
