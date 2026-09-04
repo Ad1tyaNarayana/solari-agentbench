@@ -1,0 +1,51 @@
+schemaVersion: 1
+id: raft-safety
+name: Reproduce Raft Safety Under Faults
+prompt: prompt.md
+fixtures:
+  - fixtures/stable-election.json
+  - fixtures/leader-failover.json
+  - fixtures/minority-isolation.json
+  - fixtures/majority-recovery.json
+  - fixtures/divergent-log-repair.json
+resources:
+  allowed: [sandbox, browser]
+  planningRequired: true
+  budget: { browserSessions: 1, sandboxes: 1, desktops: 0, totalMinutes: 5 }
+submission:
+  directory: submission
+  required: [run, source, results.json, methodology.md, provenance.json]
+evaluationPolicy:
+  maxModelJudgeWeight: 30
+  allowModelJudgeMajority: false
+evaluators:
+  - { id: run-entry, type: file, weight: 5, config: { subject: run, assertion: present } }
+  - { id: results, type: schema, weight: 5, config: { subject: results.json, schema: evaluators/results.schema.json } }
+  - { id: methodology, type: file, weight: 5, config: { subject: methodology.md, assertion: min-bytes, value: 400 } }
+  - id: verify-raft
+    type: command
+    weight: 65
+    prerequisites: [run-entry, results]
+    config:
+      argv: [node, /benchmark/tasks/raft-safety/evaluators/verify-raft.mjs]
+      network: false
+      timeoutMs: 180000
+      resultPreview: { directory: /result/viewer, port: 4173, healthPath: /index.html }
+  - id: inspect-trace
+    type: browser
+    weight: 20
+    prerequisites: [verify-raft]
+    config:
+      actions:
+        - { type: goto, url: { fromEvaluator: verify-raft, output: previewUrl } }
+        - { type: assertText, selector: "[data-testid='title']", contains: "Raft fault trace" }
+        - { type: click, selector: "[data-testid='scenario-leader-failover']" }
+        - { type: assertText, selector: "[data-testid='scenario']", contains: "leader-failover" }
+        - { type: assertText, selector: "[data-testid='term']", contains: { fromEvaluator: verify-raft, output: expectedTerm } }
+        - { type: assertText, selector: "[data-testid='leader']", contains: { fromEvaluator: verify-raft, output: expectedLeader } }
+        - { type: assertText, selector: "[data-testid='invariant-election-safety']", contains: { fromEvaluator: verify-raft, output: electionSafety } }
+        - { type: click, selector: "[data-testid='scenario-minority-isolation']" }
+        - { type: assertText, selector: "[data-testid='scenario']", contains: "minority-isolation" }
+        - { type: assertText, selector: "[data-testid='partition']", contains: "minority" }
+        - { type: assertText, selector: "[data-testid='invariant-quorum-behavior']", contains: { fromEvaluator: verify-raft, output: quorumBehavior } }
+        - { type: screenshot, role: raft-fault-trace }

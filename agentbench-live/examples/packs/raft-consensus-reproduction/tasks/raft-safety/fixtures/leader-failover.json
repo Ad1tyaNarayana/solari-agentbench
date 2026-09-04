@@ -1,0 +1,13 @@
+{
+  "id": "leader-failover",
+  "seed": 2202,
+  "maxTicks": 80,
+  "operations": [
+    { "type": "elect" },
+    { "type": "client", "command": "set before=1" },
+    { "type": "stopLeader" },
+    { "type": "elect" },
+    { "type": "client", "command": "set after=2" }
+  ],
+  "expectations": { "minimumTerms": 2, "minimumCommits": 2, "recoveryCommitsCommand": "set after=2" }
+}

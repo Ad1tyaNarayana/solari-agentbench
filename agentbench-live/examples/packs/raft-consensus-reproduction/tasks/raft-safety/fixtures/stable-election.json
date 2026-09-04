@@ -1,0 +1,11 @@
+{
+  "id": "stable-election",
+  "seed": 1101,
+  "maxTicks": 40,
+  "operations": [
+    { "type": "elect" },
+    { "type": "client", "command": "set alpha=1" },
+    { "type": "heartbeat" }
+  ],
+  "expectations": { "minimumCommits": 1 }
+}

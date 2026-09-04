@@ -1,0 +1,14 @@
+{
+  "id": "minority-isolation",
+  "seed": 3303,
+  "maxTicks": 80,
+  "operations": [
+    { "type": "elect" },
+    { "type": "client", "command": "set committed=1" },
+    { "type": "partitionLeaderMinority" },
+    { "type": "clientNoQuorum", "command": "set forbidden=2" },
+    { "type": "heal" },
+    { "type": "repair" }
+  ],
+  "expectations": { "minimumCommits": 1, "minorityCannotCommitCommand": "set forbidden=2" }
+}

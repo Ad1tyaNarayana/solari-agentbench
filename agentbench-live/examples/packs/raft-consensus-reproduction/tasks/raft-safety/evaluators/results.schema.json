@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["paper", "protocol", "nodeCount", "deterministic", "artifacts"],
+  "properties": {
+    "paper": { "const": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf" },
+    "protocol": { "const": "raft" },
+    "nodeCount": { "const": 5 },
+    "deterministic": { "const": true },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "contains": { "const": "trace.jsonl" },
+      "minItems": 3,
+      "uniqueItems": true
+    }
+  }
+}

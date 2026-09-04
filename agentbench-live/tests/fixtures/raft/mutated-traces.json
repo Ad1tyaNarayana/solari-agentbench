@@ -1,0 +1,34 @@
+[
+  {
+    "id": "two-leaders-one-term",
+    "violates": "electionSafety",
+    "events": [
+      { "tick": 1, "type": "leader_elected", "term": 1, "node": "n1", "role": "leader", "commitIndex": 0, "logDigest": "a", "log": [] },
+      { "tick": 2, "type": "leader_elected", "term": 1, "node": "n2", "role": "leader", "commitIndex": 0, "logDigest": "a", "log": [] }
+    ]
+  },
+  {
+    "id": "matching-entry-divergent-prefix",
+    "violates": "logMatching",
+    "events": [
+      { "tick": 1, "type": "append_accepted", "term": 2, "node": "n1", "role": "leader", "commitIndex": 0, "logDigest": "a", "log": [{ "term": 1, "command": "x" }, { "term": 2, "command": "z" }] },
+      { "tick": 2, "type": "append_accepted", "term": 2, "node": "n2", "role": "follower", "commitIndex": 0, "logDigest": "b", "log": [{ "term": 1, "command": "y" }, { "term": 2, "command": "z" }] }
+    ]
+  },
+  {
+    "id": "leader-missing-committed-entry",
+    "violates": "leaderCompleteness",
+    "events": [
+      { "tick": 1, "type": "commit_advanced", "term": 1, "node": "n1", "role": "leader", "commitIndex": 1, "logDigest": "a", "log": [{ "term": 1, "command": "x" }], "index": 1, "command": "x" },
+      { "tick": 2, "type": "leader_elected", "term": 2, "node": "n2", "role": "leader", "commitIndex": 0, "logDigest": "b", "log": [] }
+    ]
+  },
+  {
+    "id": "conflicting-applies",
+    "violates": "stateMachineSafety",
+    "events": [
+      { "tick": 1, "type": "apply", "term": 1, "node": "n1", "role": "leader", "commitIndex": 1, "logDigest": "a", "log": [{ "term": 1, "command": "x" }], "index": 1, "command": "x" },
+      { "tick": 2, "type": "apply", "term": 1, "node": "n2", "role": "follower", "commitIndex": 1, "logDigest": "b", "log": [{ "term": 1, "command": "y" }], "index": 1, "command": "y" }
+    ]
+  }
+]

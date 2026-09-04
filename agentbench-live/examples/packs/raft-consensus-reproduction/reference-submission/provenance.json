@@ -1,0 +1,13 @@
+{
+  "paper": {
+    "title": "In Search of an Understandable Consensus Algorithm",
+    "authors": ["Diego Ongaro", "John Ousterhout"],
+    "venue": "2014 USENIX Annual Technical Conference",
+    "url": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf"
+  },
+  "implementation": "Clean-room deterministic executable model written for AgentBench Live",
+  "language": "JavaScript",
+  "runtime": "Node.js 20 or newer",
+  "seedPolicy": "The integer CLI seed is the sole input to a fixed Mulberry32 election-choice generator",
+  "generatedAt": null
+}

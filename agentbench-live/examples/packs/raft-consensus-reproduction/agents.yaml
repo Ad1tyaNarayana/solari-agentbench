@@ -1,0 +1,9 @@
+schemaVersion: 1
+agents:
+  - id: raft-codex
+    name: Codex Raft Researcher
+    provider: codex
+    model: gpt-5.6-sol
+    reasoningEffort: high
+    harness: { id: agentbench-basic-loop, version: '1' }
+    options: {}

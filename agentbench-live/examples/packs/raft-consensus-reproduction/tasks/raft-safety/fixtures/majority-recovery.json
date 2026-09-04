@@ -1,0 +1,15 @@
+{
+  "id": "majority-recovery",
+  "seed": 4404,
+  "maxTicks": 100,
+  "operations": [
+    { "type": "elect" },
+    { "type": "client", "command": "set base=1" },
+    { "type": "partitionLeaderMinority" },
+    { "type": "electMajority" },
+    { "type": "client", "command": "set recovered=2" },
+    { "type": "heal" },
+    { "type": "repair" }
+  ],
+  "expectations": { "minimumTerms": 2, "minimumCommits": 2, "recoveryCommitsCommand": "set recovered=2" }
+}

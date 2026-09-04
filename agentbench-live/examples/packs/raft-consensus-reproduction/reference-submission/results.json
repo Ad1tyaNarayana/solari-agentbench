@@ -1,0 +1,7 @@
+{
+  "paper": "https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf",
+  "protocol": "raft",
+  "nodeCount": 5,
+  "deterministic": true,
+  "artifacts": ["summary.json", "trace.jsonl", "viewer/index.html"]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "divergent-log-repair",
+  "seed": 5505,
+  "maxTicks": 120,
+  "operations": [
+    { "type": "elect" },
+    { "type": "client", "command": "set base=1" },
+    { "type": "partitionLeaderMinority" },
+    { "type": "clientNoQuorum", "command": "set stale=2" },
+    { "type": "electMajority" },
+    { "type": "client", "command": "set canonical=3" },
+    { "type": "heal" },
+    { "type": "repair" }
+  ],
+  "expectations": { "minimumTerms": 2, "minimumCommits": 2, "minorityCannotCommitCommand": "set stale=2", "recoveryCommitsCommand": "set canonical=3", "requiresLogRepair": true }
+}
