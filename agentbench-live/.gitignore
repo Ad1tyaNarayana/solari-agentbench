@@ -36,6 +36,8 @@ yarn-error.log*
 
 # local AgentBench data
 /.agentbench/
+/.superpowers/
+credentials.json
 
 # vercel
 .vercel

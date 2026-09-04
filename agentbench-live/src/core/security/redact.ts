@@ -1,5 +1,6 @@
 export type RedactionContext = {
   localRoots?: string[];
+  exactValues?: readonly string[];
 };
 
 function escapeRegExp(value: string): string {
@@ -20,6 +21,13 @@ export function redact(value: string, context: RedactionContext = {}): string {
       new RegExp(escapeRegExp(root), "gi"),
       "[REDACTED_LOCAL_PATH]",
     );
+  }
+  for (const exactValue of [...(context.exactValues ?? [])].sort(
+    (left, right) => right.length - left.length,
+  )) {
+    if (exactValue.length > 0) {
+      sanitized = sanitized.split(exactValue).join("[REDACTED]");
+    }
   }
   return sanitized;
 }
