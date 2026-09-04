@@ -103,6 +103,7 @@ function createHarness(options: {
 } = {}) {
   const repository = new SqliteRunRepository(":memory:");
   const events = new RunEventBus();
+  const operationOrder: string[] = [];
   const activeTask: TaskManifest = {
     ...task,
     budget: {
@@ -118,6 +119,7 @@ function createHarness(options: {
     calls: [],
     async plan(input) {
       this.calls.push(input);
+      operationOrder.push("planning");
       if (options.plannerNeverResolves) {
         return new Promise<never>(() => undefined);
       }
@@ -129,6 +131,7 @@ function createHarness(options: {
     calls: [],
     async generate(input) {
       this.calls.push(input);
+      operationOrder.push("generation");
       if (options.generatorError) throw options.generatorError;
       if (options.lateGenerationResourceMs !== undefined) {
         await new Promise((resolveDelay) =>
@@ -172,6 +175,7 @@ function createHarness(options: {
     calls: [],
     async verify(input) {
       this.calls.push(input);
+      operationOrder.push("verification");
       if (options.lateProvisionMs !== undefined) {
         input.onStage("provisioning");
         await input.acquireWithDeadline(
@@ -283,12 +287,16 @@ function createHarness(options: {
     resolveSelection: async (request) => {
       selectionCalls += 1;
       if (options.selectionError) throw options.selectionError;
-      return options.resolveSelection
+      const selection = options.resolveSelection
         ? options.resolveSelection(request)
         : { benchmark, snapshot, task: activeTask, agent };
+      const resolved = await selection;
+      operationOrder.push("selection-resolved");
+      return resolved;
     },
     preflight: async (selection) => {
       preflightSelections.push(selection);
+      operationOrder.push("preflight");
     },
     createWorkspace: async () => {
       workspaceCalls += 1;
@@ -329,6 +337,7 @@ function createHarness(options: {
       return selectionCalls;
     },
     preflightSelections,
+    operationOrder,
   };
 }
 
@@ -445,6 +454,7 @@ test("passes the exact selection created from the snapshot through preflight, pl
     taskId: task.id,
     agentId: agent.id,
   });
+  expect(harness.operationOrder).toEqual(["selection-resolved"]);
   sourcePrompt = "Prompt edited after create().";
   const completed = await harness.orchestrator.runCreated(
     created.run.id,
@@ -454,13 +464,43 @@ test("passes the exact selection created from the snapshot through preflight, pl
   expect(completed.stage).toBe("completed");
   expect(harness.selectionCalls).toBe(1);
   expect(created.selection).toBe(selected);
-  expect(harness.preflightSelections).toEqual([created.selection]);
-  expect(harness.planner.calls[0]).toMatchObject({
-    task: { prompt: "Prompt captured before the source edit." },
-  });
-  expect(harness.generator.calls[0]).toMatchObject({
-    taskPrompt: "Prompt captured before the source edit.",
-  });
+  expect(harness.preflightSelections).toHaveLength(1);
+  expect(harness.preflightSelections[0]).toBe(created.selection);
+  expect(harness.preflightSelections[0].task).toBe(created.selection.task);
+  expect(harness.preflightSelections[0].agent).toBe(created.selection.agent);
+
+  const plannerInput = harness.planner.calls[0] as {
+    task: TaskManifest;
+    agent: AgentConfig;
+  };
+  expect(plannerInput.task).toBe(created.selection.task);
+  expect(plannerInput.agent).toBe(created.selection.agent);
+  expect(plannerInput.task.prompt).toBe(
+    "Prompt captured before the source edit.",
+  );
+
+  const generatorInput = harness.generator.calls[0] as {
+    agent: AgentConfig;
+    taskPrompt: string;
+  };
+  expect(generatorInput.agent).toBe(created.selection.agent);
+  expect(generatorInput.taskPrompt).toBe(
+    "Prompt captured before the source edit.",
+  );
+
+  const verifierInput = harness.verifier.calls[0] as {
+    task: TaskManifest;
+    agent: AgentConfig;
+  };
+  expect(verifierInput.task).toBe(created.selection.task);
+  expect(verifierInput.agent).toBe(created.selection.agent);
+  expect(harness.operationOrder).toEqual([
+    "selection-resolved",
+    "preflight",
+    "planning",
+    "generation",
+    "verification",
+  ]);
   harness.repository.close();
 });
 

@@ -17,12 +17,12 @@ import {
 import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { RunEventBus } from "@/core/events/run-events";
 import { SqliteRunRepository } from "@/core/persistence/sqlite-repository";
+import type { RunRepository } from "@/core/persistence/repository";
 import {
   defaultSubmissionPolicy,
   packageSubmission,
 } from "@/core/security/package-submission";
 import { createWorkspace } from "@/core/security/workspace";
-import type { RunRequest } from "@/core/runner/contracts";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { RunQueue } from "@/core/runner/queue";
 import { createSolariServices } from "@/core/solari/clients";
@@ -30,7 +30,6 @@ import { VerifierRegistry } from "@/core/verifiers/registry";
 import {
   RunApiError,
   type RunApiPort,
-  type RunSubmission,
 } from "./contracts";
 import {
   getOrCreateGlobalServerContainer,
@@ -43,6 +42,47 @@ function selectionError(error: unknown): never {
     throw new RunApiError(error.code, error.message);
   }
   throw error;
+}
+
+type SubmissionOrchestrator = Pick<
+  AgentBenchOrchestrator,
+  "create" | "dryRun" | "runCreated"
+>;
+
+export function createRunSubmitter(input: {
+  executionOrchestrator(): SubmissionOrchestrator;
+  queue: RunQueue;
+  repository: RunRepository;
+  events: RunEventBus;
+}): RunApiPort["submit"] {
+  return async function submit(request) {
+    try {
+      if (request.dryRun) {
+        return {
+          kind: "dry-run",
+          report: await input.executionOrchestrator().dryRun(request),
+        };
+      }
+
+      const activeOrchestrator = input.executionOrchestrator();
+      const created = await activeOrchestrator.create(request);
+      void input.queue
+        .enqueue(() =>
+          activeOrchestrator.runCreated(created.run.id, created.selection),
+        )
+        .catch((error) => {
+          persistDetachedQueueFailure({
+            repository: input.repository,
+            events: input.events,
+            runId: created.run.id,
+            error,
+          });
+        });
+      return { kind: "run", run: created.run };
+    } catch (error) {
+      return selectionError(error);
+    }
+  };
 }
 
 export function createServerContainer(): RunApiPort {
@@ -95,36 +135,12 @@ export function createServerContainer(): RunApiPort {
     return orchestrator;
   }
 
-  async function submit(
-    request: RunRequest & { dryRun?: boolean },
-  ): Promise<RunSubmission> {
-    try {
-      if (request.dryRun) {
-        return {
-          kind: "dry-run",
-          report: await executionOrchestrator().dryRun(request),
-        };
-      }
-
-      const activeOrchestrator = executionOrchestrator();
-      const created = await activeOrchestrator.create(request);
-      void queue
-        .enqueue(() =>
-          activeOrchestrator.runCreated(created.run.id, created.selection),
-        )
-        .catch((error) => {
-          persistDetachedQueueFailure({
-            repository,
-            events,
-            runId: created.run.id,
-            error,
-          });
-        });
-      return { kind: "run", run: created.run };
-    } catch (error) {
-      return selectionError(error);
-    }
-  }
+  const submit = createRunSubmitter({
+    executionOrchestrator,
+    queue,
+    repository,
+    events,
+  });
 
   return {
     submit,
