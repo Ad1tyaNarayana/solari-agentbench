@@ -44,6 +44,29 @@ test("redacts every active exact value from nested provider output", async () =>
   });
 });
 
+test("redacts nested token fields, credential assignments, and signed URLs on any host", () => {
+  const output = redactCredentialOutput({
+    url: "https://preview.example.test/run?token=url-secret&mode=view",
+    token: "nested-token-secret",
+    nested: {
+      authorization: "raw-authorization-secret",
+      message: "token=assignment-secret Bearer bearer-secret",
+    },
+  });
+
+  expect(output).toEqual({
+    url: "[REDACTED_SIGNED_URL]",
+    token: "[REDACTED]",
+    nested: {
+      authorization: "[REDACTED]",
+      message: "token=[REDACTED] Bearer [REDACTED]",
+    },
+  });
+  expect(JSON.stringify(output)).not.toMatch(
+    /url-secret|nested-token-secret|raw-authorization-secret|assignment-secret|bearer-secret/,
+  );
+});
+
 test("keeps identical active values registered until every scope releases", async () => {
   const store = environmentStore({ first: "shared-secret", second: "shared-secret" });
 

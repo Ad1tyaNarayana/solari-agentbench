@@ -7,14 +7,56 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const sensitiveUrlParameters = new Set([
+  "access_token",
+  "api_key",
+  "auth",
+  "authorization",
+  "credential",
+  "expires",
+  "key",
+  "session_token",
+  "sig",
+  "signature",
+  "token",
+  "x-amz-credential",
+  "x-amz-signature",
+]);
+
+function redactCredentialUrls(value: string): string {
+  return value.replace(/https?:\/\/[^\s"'<>\[\]{},]+/gi, (candidate) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      return candidate;
+    }
+    if (parsed.hostname.toLowerCase().endsWith("getsolari.com")) {
+      return "[REDACTED_SOLARI_URL]";
+    }
+    if (
+      [...parsed.searchParams.keys()].some((key) =>
+        sensitiveUrlParameters.has(key.toLowerCase()),
+      )
+    ) {
+      return "[REDACTED_SIGNED_URL]";
+    }
+    return candidate;
+  });
+}
+
+function redactCredentialAssignments(value: string): string {
+  return value.replace(
+    /((?:["']?(?:api[_-]?key|authorization|credential|secret|session[_-]?token|signature|sig|token)["']?)\s*[:=]\s*)(["']?)([^\s"',;&}\]]+)\2/gi,
+    (_match, prefix: string, quote: string) =>
+      `${prefix}${quote}[REDACTED]${quote}`,
+  );
+}
+
 export function redact(value: string, context: RedactionContext = {}): string {
-  let sanitized = value
+  let sanitized = redactCredentialAssignments(redactCredentialUrls(value))
     .replace(/\bBearer\s+[^\s"'},\]]+/gi, "Bearer [REDACTED]")
-    .replace(/\bslr_(?:live|test)_[A-Za-z0-9_-]+\b/g, "[REDACTED_SOLARI_KEY]")
-    .replace(
-      /https:\/\/[A-Za-z0-9.-]*getsolari\.com\/[^\s"'<>\[\]{},]+/gi,
-      "[REDACTED_SOLARI_URL]",
-    );
+    .replace(/\bslr_(?:live|test)_[A-Za-z0-9_-]+\b/g, "[REDACTED_SOLARI_KEY]");
 
   for (const root of context.localRoots ?? []) {
     sanitized = sanitized.replace(

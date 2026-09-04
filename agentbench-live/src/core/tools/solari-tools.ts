@@ -1,4 +1,5 @@
 import type { RunPlan, Primitive } from "@/core/domain/plan";
+import { redactCredentialOutput } from "@/core/credentials/redaction";
 import type { AgentEventSink } from "@/core/providers/events";
 import type {
   BrowserHandle,
@@ -13,6 +14,8 @@ import {
   AgentToolError,
   COMMAND_OUTPUT_MAX_BYTES,
   COMMAND_TIMEOUT_MAX_MS,
+  SCREENSHOT_BASE64_MAX_BYTES,
+  SCREENSHOT_MAX_BYTES,
   solariToolContracts,
 } from "./types";
 
@@ -61,6 +64,25 @@ function boundedExecResult(result: ExecResult): ExecResult & { outputTruncated: 
       acceptedStdout.byteLength < stdout.byteLength ||
       acceptedStderr.byteLength < stderr.byteLength,
   };
+}
+
+function sanitizeProviderOutput<T>(value: T): T {
+  return redactCredentialOutput(value) as T;
+}
+
+function screenshotEvidence(bytes: Uint8Array, toolName: string) {
+  if (bytes.byteLength > SCREENSHOT_MAX_BYTES) {
+    throw new AgentToolError("output_limit", "Screenshot exceeds raw byte limit", {
+      toolName,
+    });
+  }
+  const dataBase64 = Buffer.from(bytes).toString("base64");
+  if (Buffer.byteLength(dataBase64, "utf8") > SCREENSHOT_BASE64_MAX_BYTES) {
+    throw new AgentToolError("output_limit", "Screenshot exceeds encoded byte limit", {
+      toolName,
+    });
+  }
+  return { mediaType: "image/png" as const, dataBase64 };
 }
 
 async function abortable<T>(
@@ -187,12 +209,37 @@ export class SolariTools {
     operation: string,
     observation: Record<string, unknown> = {},
   ): Promise<void> {
-    await this.#sink.emit("resource-observation", {
-      primitive,
-      handle,
-      operation,
-      ...observation,
-    });
+    await this.#sink.emit(
+      "resource-observation",
+      sanitizeProviderOutput({
+        primitive,
+        handle,
+        operation,
+        ...observation,
+      }),
+    );
+  }
+
+  async #trackResource(
+    track: () => void,
+    dispose: () => Promise<void>,
+    toolName: string,
+  ): Promise<void> {
+    try {
+      track();
+    } catch {
+      try {
+        await dispose();
+      } catch {
+        // The resource is disposed exactly once; the typed boundary error does
+        // not expose provider errors that may contain credentials or URLs.
+      }
+      throw new AgentToolError(
+        "resource_tracking_failed",
+        "Solari resource could not be registered for cleanup",
+        { toolName },
+      );
+    }
   }
 
   async #createSandbox(args: Record<string, unknown>, signal: AbortSignal) {
@@ -204,7 +251,11 @@ export class SolariTools {
       toolName,
     );
     const sandbox = await this.#services.sandbox.create({ timeoutMs });
-    this.#supervisor.trackSandbox(sandbox);
+    await this.#trackResource(
+      () => this.#supervisor.trackSandbox(sandbox),
+      () => sandbox.kill(),
+      toolName,
+    );
     signal.throwIfAborted();
     const handle = `s-${this.#nextSandbox++}`;
     this.#sandboxes.set(handle, sandbox);
@@ -222,7 +273,7 @@ export class SolariTools {
       this.#remainingMs,
       toolName,
     );
-    const result = boundedExecResult(
+    const result = sanitizeProviderOutput(boundedExecResult(
       await abortable(
         sandbox.exec(args.command as string, args.args as string[], {
           ...(args.cwd === undefined ? {} : { cwd: args.cwd as string }),
@@ -231,7 +282,7 @@ export class SolariTools {
         signal,
         toolName,
       ),
-    );
+    ));
     await this.#emitObservation("sandbox", handle, "exec", {
       exitCode: result.exitCode,
       outputTruncated: result.outputTruncated,
@@ -253,7 +304,7 @@ export class SolariTools {
       url: preview.url,
       port: args.port,
     });
-    return { url: preview.url };
+    return sanitizeProviderOutput({ url: preview.url });
   }
 
   async #createBrowser(args: Record<string, unknown>, signal: AbortSignal) {
@@ -263,7 +314,11 @@ export class SolariTools {
       ...(args.recording === undefined ? {} : { recording: args.recording as boolean }),
       ...(args.stealth === undefined ? {} : { stealth: args.stealth as boolean }),
     });
-    this.#supervisor.trackBrowser(resource);
+    await this.#trackResource(
+      () => this.#supervisor.trackBrowser(resource),
+      () => resource.close(),
+      toolName,
+    );
     signal.throwIfAborted();
     const handle = `b-${this.#nextBrowser++}`;
     const page = await abortable(resource.newPage(), signal, toolName);
@@ -280,7 +335,7 @@ export class SolariTools {
     await abortable(page.goto(args.url as string), signal, toolName);
     const url = page.url();
     await this.#emitObservation("browser", handle, "goto", { url });
-    return { url };
+    return sanitizeProviderOutput({ url });
   }
 
   async #browserFill(args: Record<string, unknown>, signal: AbortSignal) {
@@ -295,7 +350,7 @@ export class SolariTools {
     );
     const url = page.url();
     await this.#emitObservation("browser", handle, "fill", { url });
-    return { url };
+    return sanitizeProviderOutput({ url });
   }
 
   async #browserClick(args: Record<string, unknown>, signal: AbortSignal) {
@@ -306,7 +361,7 @@ export class SolariTools {
     await abortable(page.click(args.selector as string), signal, toolName);
     const url = page.url();
     await this.#emitObservation("browser", handle, "click", { url });
-    return { url };
+    return sanitizeProviderOutput({ url });
   }
 
   async #browserText(args: Record<string, unknown>, signal: AbortSignal) {
@@ -330,7 +385,7 @@ export class SolariTools {
       found: text !== null,
       bytes: text === null ? 0 : Buffer.byteLength(text, "utf8"),
     });
-    return { text, url };
+    return sanitizeProviderOutput({ text, url });
   }
 
   async #browserScreenshot(args: Record<string, unknown>, signal: AbortSignal) {
@@ -339,14 +394,11 @@ export class SolariTools {
     const handle = args.handle as string;
     const { page } = this.#resource(this.#browsers, handle, toolName);
     const bytes = await abortable(page.screenshot(), signal, toolName);
-    const evidenceCandidate = {
-      mediaType: "image/png",
-      dataBase64: Buffer.from(bytes).toString("base64"),
-    };
+    const evidenceCandidate = screenshotEvidence(bytes, toolName);
     await this.#emitObservation("browser", handle, "screenshot", {
       evidenceCandidate,
     });
-    return evidenceCandidate;
+    return sanitizeProviderOutput(evidenceCandidate);
   }
 
   async #createDesktop(args: Record<string, unknown>, signal: AbortSignal) {
@@ -362,7 +414,11 @@ export class SolariTools {
       ...(args.resolution === undefined ? {} : { resolution: args.resolution as string }),
       ...(args.record === undefined ? {} : { record: args.record as boolean }),
     });
-    this.#supervisor.trackDesktop(desktop);
+    await this.#trackResource(
+      () => this.#supervisor.trackDesktop(desktop),
+      () => desktop.kill(),
+      toolName,
+    );
     signal.throwIfAborted();
     const handle = `d-${this.#nextDesktop++}`;
     this.#desktops.set(handle, desktop);
@@ -380,7 +436,7 @@ export class SolariTools {
       this.#remainingMs,
       toolName,
     );
-    const result = boundedExecResult(
+    const result = sanitizeProviderOutput(boundedExecResult(
       await abortable(
         desktop.exec(args.command as string, args.args as string[], {
           ...(args.cwd === undefined ? {} : { cwd: args.cwd as string }),
@@ -389,7 +445,7 @@ export class SolariTools {
         signal,
         toolName,
       ),
-    );
+    ));
     await this.#emitObservation("desktop", handle, "exec", {
       exitCode: result.exitCode,
       outputTruncated: result.outputTruncated,
@@ -429,13 +485,10 @@ export class SolariTools {
     const handle = args.handle as string;
     const desktop = this.#resource(this.#desktops, handle, toolName);
     const bytes = await abortable(desktop.screenshot(), signal, toolName);
-    const evidenceCandidate = {
-      mediaType: "image/png",
-      dataBase64: Buffer.from(bytes).toString("base64"),
-    };
+    const evidenceCandidate = screenshotEvidence(bytes, toolName);
     await this.#emitObservation("desktop", handle, "screenshot", {
       evidenceCandidate,
     });
-    return evidenceCandidate;
+    return sanitizeProviderOutput(evidenceCandidate);
   }
 }

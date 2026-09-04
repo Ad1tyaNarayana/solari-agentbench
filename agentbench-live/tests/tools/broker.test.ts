@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,7 +7,10 @@ import type { AgentEventSink } from "@/core/providers/events";
 import type { SolariServices } from "@/core/solari/contracts";
 import { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import { createAgentToolBroker } from "@/core/tools/broker";
-import { AgentToolError } from "@/core/tools/types";
+import {
+  AgentToolError,
+  type IsolatedWorkspaceCommandRunner,
+} from "@/core/tools/types";
 
 const fixtureRoots: string[] = [];
 const plan: RunPlan = {
@@ -49,6 +52,7 @@ const sink: AgentEventSink = {
 async function fixtureBroker(options: {
   remainingMs?: () => number;
   environment?: Record<string, string | undefined>;
+  commandRunner?: IsolatedWorkspaceCommandRunner;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), "agentbench-tools-"));
   fixtureRoots.push(root);
@@ -60,6 +64,7 @@ async function fixtureBroker(options: {
     sink,
     remainingMs: options.remainingMs ?? (() => 120_000),
     environment: options.environment ?? {},
+    workspaceCommandRunner: options.commandRunner,
   });
   return { root, broker };
 }
@@ -205,6 +210,35 @@ describe("workspace tools", () => {
     ).rejects.toMatchObject({ code: "path_forbidden" });
   });
 
+  it("rejects directory listings above the explicit entry cap", async () => {
+    const { root, broker } = await fixtureBroker();
+    await Promise.all(
+      Array.from({ length: 1001 }, (_, index) =>
+        writeFile(join(root, `entry-${String(index).padStart(4, "0")}.txt`), ""),
+      ),
+    );
+
+    await expect(
+      broker.invoke("workspace_list", {}, new AbortController().signal),
+    ).rejects.toMatchObject({ code: "output_limit" });
+  });
+
+  it("rejects directory listings above the explicit aggregate byte cap", async () => {
+    const { root, broker } = await fixtureBroker();
+    await Promise.all(
+      Array.from({ length: 700 }, (_, index) =>
+        writeFile(
+          join(root, `${String(index).padStart(4, "0")}-${"x".repeat(100)}.txt`),
+          "",
+        ),
+      ),
+    );
+
+    await expect(
+      broker.invoke("workspace_list", {}, new AbortController().signal),
+    ).rejects.toMatchObject({ code: "output_limit" });
+  });
+
   it("enforces byte caps independently of schema character limits", async () => {
     const { root, broker } = await fixtureBroker();
     await writeFile(join(root, "too-large.txt"), Buffer.alloc(1024 * 1024 + 1, 97));
@@ -225,95 +259,196 @@ describe("workspace tools", () => {
     ).rejects.toMatchObject({ code: "input_limit" });
   });
 
-  it("executes argument arrays without a shell and with only the supplied environment", async () => {
+  it("fails closed instead of spawning a host process when no isolated runner is configured", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "agentbench-host-escape-"));
+    fixtureRoots.push(outside);
+    const sentinel = join(outside, "host-process-ran.txt");
+    const { broker } = await fixtureBroker();
+
+    await expect(
+      broker.invoke(
+        "workspace_exec",
+        {
+          command: process.execPath,
+          args: [
+            "-e",
+            `require('node:fs').writeFileSync(${JSON.stringify(sentinel)}, 'unsafe')`,
+          ],
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "isolation_unavailable" });
+    await expect(access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("delegates execution only to the injected isolated boundary with a filtered environment", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const commandRunner = {
+      async run(input: Record<string, unknown>) {
+        calls.push(input);
+        return {
+          exitCode: 0,
+          stdout: "isolated output",
+          stderr: "",
+          timedOut: false,
+          outputTruncated: false,
+        };
+      },
+    };
     const { root, broker } = await fixtureBroker({
       environment: {
         LANG: "test-language",
         SOLARI_API_KEY: "slr_live_must_not_reach_local_commands",
       },
+      commandRunner,
     });
     const result = await broker.invoke(
       "workspace_exec",
       {
-        command: process.execPath,
-        args: [
-          "-e",
-          "process.stdout.write(String(process.env.LANG)+':'+String(process.env.SOLARI_API_KEY))",
-        ],
+        command: "virtual-command",
+        args: ["literal", "arguments"],
       },
       new AbortController().signal,
     );
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       exitCode: 0,
-      stdout: "test-language:undefined",
+      stdout: "isolated output",
       stderr: "",
       timedOut: false,
       outputTruncated: false,
     });
-    await expect(
-      broker.invoke(
-        "workspace_exec",
-        { command: `echo unsafe > ${join(root, "shell-created.txt")}`, args: [] },
-        new AbortController().signal,
-      ),
-    ).rejects.toBeInstanceOf(AgentToolError);
-    await expect(access(join(root, "shell-created.txt"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    expect(calls).toEqual([{
+      workspaceRoot: root,
+      workingDirectory: root,
+      command: "virtual-command",
+      args: ["literal", "arguments"],
+      environment: { LANG: "test-language" },
+      timeoutMs: 120_000,
+      maxOutputBytes: 1024 * 1024,
+      signal: expect.any(AbortSignal),
+    }]);
   });
 
-  it("uses the smaller remaining deadline and caps aggregate command output at one MiB", async () => {
-    const { broker } = await fixtureBroker({ remainingMs: () => 25 });
-    const timedOut = await broker.invoke(
+  it("passes the smaller remaining deadline and enforces output bounds across the isolation boundary", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const commandRunner = {
+      async run(input: Record<string, unknown>) {
+        calls.push(input);
+        return {
+          exitCode: 0,
+          stdout: "x".repeat(1024 * 1024),
+          stderr: "leak-past-cap",
+          timedOut: true,
+          outputTruncated: false,
+        };
+      },
+    };
+    const { broker } = await fixtureBroker({
+      remainingMs: () => 25,
+      commandRunner,
+    });
+    const result = (await broker.invoke(
       "workspace_exec",
       {
-        command: process.execPath,
-        args: ["-e", "setTimeout(() => {}, 10_000)"],
+        command: "virtual-command",
+        args: [],
         timeoutMs: 120_000,
       },
       new AbortController().signal,
-    );
-    expect(timedOut).toMatchObject({ timedOut: true });
+    )) as { stdout: string; stderr: string; timedOut: boolean; outputTruncated: boolean };
 
-    const { broker: outputBroker } = await fixtureBroker();
-    const output = (await outputBroker.invoke(
-      "workspace_exec",
-      {
-        command: process.execPath,
-        args: ["-e", `process.stdout.write("x".repeat(${1024 * 1024 + 256}))`],
-      },
-      new AbortController().signal,
-    )) as { stdout: string; stderr: string; outputTruncated: boolean };
-    expect(Buffer.byteLength(output.stdout) + Buffer.byteLength(output.stderr)).toBe(
+    expect(calls[0]).toMatchObject({ timeoutMs: 25, maxOutputBytes: 1024 * 1024 });
+    expect(Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr)).toBe(
       1024 * 1024,
     );
-    expect(output.outputTruncated).toBe(true);
+    expect(result).toMatchObject({
+      stderr: "",
+      timedOut: true,
+      outputTruncated: true,
+    });
   });
 
-  it("terminates descendant processes when a workspace command times out", async () => {
-    const { root, broker } = await fixtureBroker();
-    const sentinel = join(root, "descendant-survived.txt");
-    const descendant = [
-      "setTimeout(() =>",
-      `require('node:fs').writeFileSync(${JSON.stringify(sentinel)}, 'leak'),`,
-      "400)",
-    ].join(" ");
-    const parent = [
-      "const {spawn}=require('node:child_process');",
-      `spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'});`,
-      "setTimeout(()=>{},10000);",
-    ].join("");
+  it("serializes concurrent tool requests around workspace mutation", async () => {
+    let releaseCommand!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const commandFinished = new Promise<void>((resolve) => {
+      releaseCommand = resolve;
+    });
+    const { root, broker } = await fixtureBroker({
+      commandRunner: {
+        async run() {
+          markStarted();
+          await commandFinished;
+          return {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+            timedOut: false,
+            outputTruncated: false,
+          };
+        },
+      },
+    });
+    const signal = new AbortController().signal;
+
+    const execution = broker.invoke(
+      "workspace_exec",
+      { command: "isolated-command", args: [] },
+      signal,
+    );
+    await started;
+    const write = broker.invoke(
+      "workspace_write",
+      { path: "serialized.txt", content: "after command" },
+      signal,
+    );
+    const stateBeforeRelease = await Promise.race([
+      write.then(() => "write-finished"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("write-blocked"), 75)),
+    ]);
+
+    expect(stateBeforeRelease).toBe("write-blocked");
+    await expect(access(join(root, "serialized.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    releaseCommand();
+    await execution;
+    await write;
+    expect(await readFile(join(root, "serialized.txt"), "utf8")).toBe("after command");
+  });
+
+  it("revalidates the command working directory after isolated execution", async () => {
+    let root = "";
+    const fixture = await fixtureBroker({
+      commandRunner: {
+        async run() {
+          await rm(join(root, "work"), { recursive: true });
+          await symlink(join(root, "replacement"), join(root, "work"), "junction");
+          return {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+            timedOut: false,
+            outputTruncated: false,
+          };
+        },
+      },
+    });
+    root = fixture.root;
+    await mkdir(join(root, "work"));
+    await mkdir(join(root, "replacement"));
 
     await expect(
-      broker.invoke(
+      fixture.broker.invoke(
         "workspace_exec",
-        { command: process.execPath, args: ["-e", parent], timeoutMs: 100 },
+        { command: "isolated-command", args: [], cwd: "work" },
         new AbortController().signal,
       ),
-    ).resolves.toMatchObject({ timedOut: true });
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    await expect(access(sentinel)).rejects.toMatchObject({ code: "ENOENT" });
+    ).rejects.toMatchObject({ code: "symlink_forbidden" });
   });
 
   it("rejects malformed arguments and unknown tools with typed errors", async () => {

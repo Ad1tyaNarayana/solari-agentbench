@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import {
   lstat,
   mkdir,
@@ -16,6 +15,10 @@ import {
   AgentToolError,
   COMMAND_OUTPUT_MAX_BYTES,
   COMMAND_TIMEOUT_MAX_MS,
+  type IsolatedWorkspaceCommandResult,
+  type IsolatedWorkspaceCommandRunner,
+  WORKSPACE_LIST_MAX_BYTES,
+  WORKSPACE_LIST_MAX_ENTRIES,
   WORKSPACE_READ_MAX_BYTES,
   WORKSPACE_WRITE_MAX_BYTES,
   workspaceToolContracts,
@@ -27,7 +30,12 @@ export type WorkspaceToolsOptions = {
   workspace: Pick<DisposableWorkspace, "root">;
   remainingMs(): number;
   environment?: Readonly<Record<string, string | undefined>>;
+  commandRunner?: IsolatedWorkspaceCommandRunner;
 };
+
+// Broker requests are serialized, so untrusted agent operations cannot race
+// path validation. Direct mutation by another host process remains a trusted
+// operator action and is outside the version-one local threat model.
 
 type PatchOperation =
   | { kind: "add"; path: string; content: string }
@@ -102,49 +110,24 @@ function cappedTimeout(
   );
 }
 
-function isExited(child: ChildProcess): boolean {
-  return child.exitCode !== null || child.signalCode !== null;
-}
-
-async function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (isExited(child)) return;
-  await new Promise<void>((finish) => {
-    const timeout = setTimeout(done, timeoutMs);
-    function done() {
-      clearTimeout(timeout);
-      child.removeListener("close", done);
-      finish();
-    }
-    child.once("close", done);
-  });
-}
-
-async function terminateProcessTree(child: ChildProcess): Promise<void> {
-  if (!child.pid || isExited(child)) return;
-  if (process.platform === "win32") {
-    await new Promise<void>((finish) => {
-      const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
-        shell: false,
-        windowsHide: true,
-        stdio: "ignore",
-      });
-      killer.once("error", () => finish());
-      killer.once("close", () => finish());
-    });
-    return;
-  }
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch {
-    child.kill("SIGTERM");
-  }
-  await waitForExit(child, 1_000);
-  if (isExited(child)) return;
-  try {
-    process.kill(-child.pid, "SIGKILL");
-  } catch {
-    child.kill("SIGKILL");
-  }
+function boundedCommandResult(
+  result: IsolatedWorkspaceCommandResult,
+): IsolatedWorkspaceCommandResult {
+  const stdout = Buffer.from(result.stdout, "utf8");
+  const acceptedStdout = stdout.subarray(0, COMMAND_OUTPUT_MAX_BYTES);
+  const remaining = COMMAND_OUTPUT_MAX_BYTES - acceptedStdout.byteLength;
+  const stderr = Buffer.from(result.stderr, "utf8");
+  const acceptedStderr = stderr.subarray(0, remaining);
+  return {
+    exitCode: result.exitCode,
+    stdout: acceptedStdout.toString("utf8"),
+    stderr: acceptedStderr.toString("utf8"),
+    timedOut: result.timedOut,
+    outputTruncated:
+      result.outputTruncated ||
+      acceptedStdout.byteLength < stdout.byteLength ||
+      acceptedStderr.byteLength < stderr.byteLength,
+  };
 }
 
 function parsePatch(patch: string): PatchOperation[] {
@@ -277,11 +260,13 @@ export class WorkspaceTools {
   readonly #workspace: Pick<DisposableWorkspace, "root">;
   readonly #remainingMs: () => number;
   readonly #environment: NodeJS.ProcessEnv;
+  readonly #commandRunner?: IsolatedWorkspaceCommandRunner;
 
   constructor(options: WorkspaceToolsOptions) {
     this.#workspace = options.workspace;
     this.#remainingMs = options.remainingMs;
     this.#environment = safeChildEnvironment(options.environment ?? process.env);
+    this.#commandRunner = options.commandRunner;
   }
 
   async invoke(
@@ -373,6 +358,11 @@ export class WorkspaceTools {
       });
     }
     const children = await readdir(absolutePath, { withFileTypes: true });
+    if (children.length > WORKSPACE_LIST_MAX_ENTRIES) {
+      throw new AgentToolError("output_limit", "Directory listing exceeds entry limit", {
+        toolName,
+      });
+    }
     const entries = [];
     for (const child of children.sort((left, right) => left.name.localeCompare(right.name))) {
       const childPath = resolve(absolutePath, child.name);
@@ -398,13 +388,20 @@ export class WorkspaceTools {
         size: metadata.isFile() ? metadata.size : undefined,
       });
     }
-    return {
+    await this.#resolveWorkspacePath(relativePath, toolName, false);
+    const result = {
       entries: entries.map((entry) =>
         entry.size === undefined
           ? { path: entry.path, type: entry.type }
           : entry,
       ),
     };
+    if (Buffer.byteLength(JSON.stringify(result), "utf8") > WORKSPACE_LIST_MAX_BYTES) {
+      throw new AgentToolError("output_limit", "Directory listing exceeds byte limit", {
+        toolName,
+      });
+    }
+    return result;
   }
 
   async #read(relativePath: string): Promise<unknown> {
@@ -428,6 +425,7 @@ export class WorkspaceTools {
       });
     }
     const content = new TextDecoder("utf-8", { fatal: true }).decode(contents);
+    await this.#resolveWorkspacePath(relativePath, toolName, false);
     return { content, bytes: contents.byteLength };
   }
 
@@ -443,6 +441,7 @@ export class WorkspaceTools {
     await mkdir(resolve(absolutePath, ".."), { recursive: true });
     await this.#resolveWorkspacePath(relativePath, toolName, true);
     await writeFile(absolutePath, bytes);
+    await this.#resolveWorkspacePath(relativePath, toolName, false);
     return { path: relativePath.replaceAll("\\", "/"), bytes: bytes.byteLength };
   }
 
@@ -488,10 +487,12 @@ export class WorkspaceTools {
     for (const operation of staged) {
       if (operation.kind === "delete") {
         await rm(operation.absolutePath, { force: false });
+        await this.#resolveWorkspacePath(operation.path, toolName, true);
       } else {
         await mkdir(resolve(operation.absolutePath, ".."), { recursive: true });
         await this.#resolveWorkspacePath(operation.path, toolName, true);
         await writeFile(operation.absolutePath, operation.content, "utf8");
+        await this.#resolveWorkspacePath(operation.path, toolName, false);
       }
     }
     return { filesChanged: staged.map(({ path }) => path.replaceAll("\\", "/")) };
@@ -502,6 +503,13 @@ export class WorkspaceTools {
     signal: AbortSignal,
   ): Promise<unknown> {
     const toolName = "workspace_exec" as const;
+    if (this.#commandRunner === undefined) {
+      throw new AgentToolError(
+        "isolation_unavailable",
+        "workspace_exec requires an isolated workspace command runner",
+        { toolName },
+      );
+    }
     const cwd = (
       await this.#resolveWorkspacePath(input.cwd ?? ".", toolName, false)
     ).absolutePath;
@@ -511,92 +519,31 @@ export class WorkspaceTools {
       });
     }
     const timeoutMs = cappedTimeout(input.timeoutMs, this.#remainingMs, toolName);
-    return new Promise((resolveResult, rejectResult) => {
-      let stdoutBytes = 0;
-      let stderrBytes = 0;
-      let outputTruncated = false;
-      let timedOut = false;
-      let aborted = false;
-      let settled = false;
-      const stdout: Buffer[] = [];
-      const stderr: Buffer[] = [];
-      let child: ChildProcess;
-      try {
-        child = spawn(input.command, input.args, {
-          cwd,
-          env: this.#environment,
-          shell: false,
-          windowsHide: true,
-          detached: process.platform !== "win32",
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-      } catch (error) {
-        rejectResult(
-          new AgentToolError("execution_failed", "Workspace command could not start", {
-            toolName,
-            cause: error,
-          }),
-        );
-        return;
-      }
-
-      const append = (target: Buffer[], chunk: Buffer, stream: "stdout" | "stderr") => {
-        const used = stdoutBytes + stderrBytes;
-        const available = Math.max(0, COMMAND_OUTPUT_MAX_BYTES - used);
-        const accepted = chunk.subarray(0, available);
-        if (accepted.byteLength > 0) {
-          target.push(accepted);
-          if (stream === "stdout") stdoutBytes += accepted.byteLength;
-          else stderrBytes += accepted.byteLength;
-        }
-        if (accepted.byteLength < chunk.byteLength) outputTruncated = true;
-      };
-      child.stdout?.on("data", (chunk: Buffer) => append(stdout, chunk, "stdout"));
-      child.stderr?.on("data", (chunk: Buffer) => append(stderr, chunk, "stderr"));
-
-      const stop = (reason: "timeout" | "abort") => {
-        if (reason === "timeout") timedOut = true;
-        else aborted = true;
-        void terminateProcessTree(child);
-      };
-      const timeout = setTimeout(() => stop("timeout"), timeoutMs);
-      const onAbort = () => stop("abort");
-      signal.addEventListener("abort", onAbort, { once: true });
-
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        signal.removeEventListener("abort", onAbort);
-        if (settled) return;
-        settled = true;
-        rejectResult(
-          new AgentToolError("execution_failed", "Workspace command failed to start", {
-            toolName,
-            cause: error,
-          }),
-        );
+    try {
+      const result = boundedCommandResult(
+        await this.#commandRunner.run({
+          workspaceRoot: await this.#canonicalRoot(),
+          workingDirectory: cwd,
+          command: input.command,
+          args: [...input.args],
+          environment: Object.fromEntries(
+            Object.entries(this.#environment).filter(
+              (entry): entry is [string, string] => entry[1] !== undefined,
+            ),
+          ),
+          timeoutMs,
+          maxOutputBytes: COMMAND_OUTPUT_MAX_BYTES,
+          signal,
+        }),
+      );
+      await this.#resolveWorkspacePath(input.cwd ?? ".", toolName, false);
+      return result;
+    } catch (error) {
+      if (error instanceof AgentToolError) throw error;
+      throw new AgentToolError("execution_failed", "Isolated workspace command failed", {
+        toolName,
+        cause: error,
       });
-      child.once("close", (exitCode) => {
-        clearTimeout(timeout);
-        signal.removeEventListener("abort", onAbort);
-        if (settled) return;
-        settled = true;
-        if (aborted) {
-          rejectResult(
-            new AgentToolError("execution_failed", "Workspace command was aborted", {
-              toolName,
-              cause: signal.reason,
-            }),
-          );
-          return;
-        }
-        resolveResult({
-          exitCode,
-          stdout: Buffer.concat(stdout).toString("utf8"),
-          stderr: Buffer.concat(stderr).toString("utf8"),
-          timedOut,
-          outputTruncated,
-        });
-      });
-    });
+    }
   }
 }

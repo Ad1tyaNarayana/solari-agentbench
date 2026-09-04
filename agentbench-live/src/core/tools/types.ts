@@ -3,8 +3,12 @@ import type { AgentToolDefinition } from "@/core/providers/types";
 
 export const WORKSPACE_READ_MAX_BYTES = 1024 * 1024;
 export const WORKSPACE_WRITE_MAX_BYTES = 5 * 1024 * 1024;
+export const WORKSPACE_LIST_MAX_ENTRIES = 1000;
+export const WORKSPACE_LIST_MAX_BYTES = 64 * 1024;
 export const COMMAND_OUTPUT_MAX_BYTES = 1024 * 1024;
 export const COMMAND_TIMEOUT_MAX_MS = 120_000;
+export const SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
+export const SCREENSHOT_BASE64_MAX_BYTES = Math.ceil(SCREENSHOT_MAX_BYTES / 3) * 4;
 
 export type AgentToolErrorCode =
   | "unknown_tool"
@@ -14,8 +18,10 @@ export type AgentToolErrorCode =
   | "input_limit"
   | "output_limit"
   | "deadline_exceeded"
+  | "isolation_unavailable"
   | "execution_failed"
   | "primitive_not_planned"
+  | "resource_tracking_failed"
   | "unknown_handle";
 
 export class AgentToolError extends Error {
@@ -35,6 +41,37 @@ export class AgentToolError extends Error {
     this.code = code;
     this.toolName = options.toolName;
   }
+}
+
+export type IsolatedWorkspaceCommandInput = {
+  workspaceRoot: string;
+  workingDirectory: string;
+  command: string;
+  args: string[];
+  environment: Readonly<Record<string, string>>;
+  timeoutMs: number;
+  maxOutputBytes: number;
+  signal: AbortSignal;
+};
+
+export type IsolatedWorkspaceCommandResult = {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  outputTruncated: boolean;
+};
+
+/**
+ * Explicit security boundary for local workspace commands.
+ *
+ * Implementations MUST use OS or remote isolation that exposes only
+ * `workspaceRoot`, disables network access, injects only `environment`, caps
+ * output, and terminates the full process tree on timeout or abort. An ordinary
+ * host child-process runner does not satisfy this contract.
+ */
+export interface IsolatedWorkspaceCommandRunner {
+  run(input: IsolatedWorkspaceCommandInput): Promise<IsolatedWorkspaceCommandResult>;
 }
 
 export type ToolContract<T extends Record<string, unknown> = Record<string, unknown>> = {

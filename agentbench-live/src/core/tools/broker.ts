@@ -11,6 +11,7 @@ import { SolariTools } from "./solari-tools";
 import {
   AgentToolError,
   allToolContracts,
+  type IsolatedWorkspaceCommandRunner,
   parseToolArguments,
   workspaceToolContracts,
 } from "./types";
@@ -25,6 +26,7 @@ export type CreateAgentToolBrokerOptions = {
   remainingMs(): number;
   /** Untrusted or secret-bearing keys are removed before local commands start. */
   environment?: Readonly<Record<string, string | undefined>>;
+  workspaceCommandRunner?: IsolatedWorkspaceCommandRunner;
 };
 
 const contractsByName = new Map(
@@ -45,12 +47,14 @@ function copyDefinition(definition: AgentToolDefinition): AgentToolDefinition {
 export class PolicyBoundAgentToolBroker implements AgentToolBroker {
   readonly #workspace: WorkspaceTools;
   readonly #solari: SolariTools;
+  #invocationTail: Promise<void> = Promise.resolve();
 
   constructor(options: CreateAgentToolBrokerOptions) {
     this.#workspace = new WorkspaceTools({
       workspace: options.workspace,
       remainingMs: options.remainingMs,
       environment: options.environment,
+      commandRunner: options.workspaceCommandRunner,
     });
     this.#solari = new SolariTools({
       plan: options.plan,
@@ -65,7 +69,22 @@ export class PolicyBoundAgentToolBroker implements AgentToolBroker {
     return allToolContracts.map(({ definition }) => copyDefinition(definition));
   }
 
-  async invoke(
+  invoke(
+    name: string,
+    argumentsValue: unknown,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const invocation = this.#invocationTail.then(() =>
+      this.#invokeSerially(name, argumentsValue, signal),
+    );
+    this.#invocationTail = invocation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return invocation;
+  }
+
+  async #invokeSerially(
     name: string,
     argumentsValue: unknown,
     signal: AbortSignal,

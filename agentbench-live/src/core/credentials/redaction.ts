@@ -45,9 +45,20 @@ export function redactCredentialOutput(
 ): unknown {
   const seen = new WeakMap<object, unknown>();
 
-  function visit(item: unknown): unknown {
+  function sensitiveKey(key: string): boolean {
+    const normalized = key
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .toLowerCase();
+    return /(?:^|[_-])(?:api[_-]?key|authorization|credential|secret|signature|sig|token)(?:$|[_-])/.test(
+      normalized,
+    );
+  }
+
+  function visit(item: unknown, redactAllStrings = false): unknown {
     if (typeof item === "string") {
-      return redactCredentialText(item, snapshot, context);
+      const sanitized = redactCredentialText(item, snapshot, context);
+      if (redactAllStrings && sanitized === item) return "[REDACTED]";
+      return sanitized;
     }
     if (item === null || typeof item !== "object") return item;
 
@@ -56,14 +67,17 @@ export function redactCredentialOutput(
     if (Array.isArray(item)) {
       const result: unknown[] = [];
       seen.set(item, result);
-      for (const child of item) result.push(visit(child));
+      for (const child of item) result.push(visit(child, redactAllStrings));
       return result;
     }
 
     const result: Record<string, unknown> = {};
     seen.set(item, result);
     for (const [key, child] of Object.entries(item)) {
-      result[redactCredentialText(key, snapshot, context)] = visit(child);
+      result[redactCredentialText(key, snapshot, context)] = visit(
+        child,
+        redactAllStrings || sensitiveKey(key),
+      );
     }
     return result;
   }
