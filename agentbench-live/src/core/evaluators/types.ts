@@ -21,12 +21,29 @@ export type EvaluatorResult = {
 };
 export type EvaluationReport = { status: "valid-score" | "invalid-score"; score: number | null; possiblePoints: 100; results: EvaluatorResult[] };
 
+export type EvaluatorFinalizerOutcome = {
+  ok: boolean;
+  summary: string;
+  assertions: EvaluatorAssertion[];
+  evidence: EvidenceReference[];
+  metadata: Record<string, unknown>;
+};
+
+export type EvaluatorFinalizerResult = EvaluatorFinalizerOutcome & {
+  evaluatorId: string;
+};
+
 export interface EvaluatorResourcePort {
   acquireSandbox(label: string, options?: { timeoutMs?: number }): Promise<SandboxHandle>;
   acquireBrowser(label: string, options?: { recording?: boolean }): Promise<BrowserHandle>;
   acquireDesktop(label: string, options?: { timeoutMs?: number }): Promise<DesktopHandle>;
   publishOutputs(evaluatorId: string, outputs: Record<string, unknown>): void;
   getOutput(evaluatorId: string, key: string): unknown;
+  registerFinalizer(
+    evaluatorId: string,
+    callback: () => Promise<EvaluatorFinalizerOutcome>,
+  ): void;
+  runFinalizers(): Promise<EvaluatorFinalizerResult[]>;
   dispose(): Promise<void>;
 }
 

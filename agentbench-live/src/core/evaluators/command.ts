@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { EvaluatorDefinition } from "@/core/benchmarks/types";
 import { uploadSnapshotTree, uploadTextTree } from "@/core/solari/upload-tree";
 import type { Evaluator, EvaluatorContext, EvaluatorOutcome } from "./types";
+import { buildInputSeal, verifyInputSeal } from "./input-seal";
 
 const Config = z.object({
   argv: z.array(z.string()).min(1).max(256), network: z.boolean().default(false), timeoutMs: z.number().int().positive().max(3_600_000).optional(),
@@ -20,10 +21,56 @@ export class CommandEvaluator implements Evaluator {
     const config = Config.parse(definition.config);
     const timeoutMs = Math.max(1, Math.min(config.timeoutMs ?? context.remainingMs(), context.remainingMs()));
     const sandbox = await context.resources.acquireSandbox(`evaluator:${definition.id}`, { timeoutMs });
+    const inputSeal = buildInputSeal(context.snapshot, context.submission);
     await Promise.all([uploadTextTree(sandbox, context.submission, "/submission"), uploadSnapshotTree(sandbox, context.snapshot)]);
     await sandbox.mkdir("/result");
     const env = { AGENTBENCH_RESULT: "/result/evaluator-result.json" };
     const metadata: Record<string, unknown> = { networkEnabled: config.network };
+
+    const hardened = await sandbox.exec(
+      "chmod",
+      ["-R", "a-w", "/benchmark", "/submission"],
+      { timeoutMs, env: {} },
+    );
+    if (hardened.exitCode !== 0) {
+      throw new Error(
+        `Evaluator input permission hardening failed: ${hardened.stderr || `chmod exited with ${hardened.exitCode}`}`,
+      );
+    }
+    context.resources.registerFinalizer(definition.id, async () => {
+      let report: Record<string, unknown> & { ok: boolean };
+      try {
+        report = await verifyInputSeal(sandbox, inputSeal);
+      } catch (error) {
+        report = {
+          schemaVersion: 1,
+          ok: false,
+          verificationError: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const evidence = await context.evidence.putJson({
+        evaluatorId: definition.id,
+        mimeType: "application/json",
+        role: "input-integrity",
+        producer: "evaluator",
+        value: report,
+      });
+      return {
+        ok: report.ok,
+        summary: report.ok
+          ? "Sealed evaluator inputs remained unchanged"
+          : "Sealed evaluator inputs changed or could not be verified",
+        assertions: [{
+          id: `${definition.id}.input-integrity`,
+          passed: report.ok,
+          summary: "Evaluator input path set, byte lengths, and SHA-256 digests are unchanged",
+          expected: true,
+          observed: report.ok,
+        }],
+        evidence: [evidence],
+        metadata: { inputIntegrity: report.ok },
+      };
+    });
 
     if (!config.network) {
       const probe = await sandbox.exec("unshare", ["--user", "--map-root-user", "--net", "--", "true"], { timeoutMs: Math.min(timeoutMs, 10_000), env: {} });

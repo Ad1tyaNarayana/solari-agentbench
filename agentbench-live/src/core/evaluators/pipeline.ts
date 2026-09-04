@@ -64,6 +64,28 @@ export class EvaluatorPipeline {
         });
       }
     }
+    const finalizers = await context.resources.runFinalizers();
+    for (const finalizer of finalizers) {
+      const current = results.get(finalizer.evaluatorId);
+      if (!current) {
+        throw new EvaluatorConfigurationError(
+          `Finalizer owner is not an enabled evaluator: ${finalizer.evaluatorId}`,
+        );
+      }
+      results.set(finalizer.evaluatorId, {
+        ...current,
+        status: finalizer.ok ? current.status : "error",
+        earnedPoints: finalizer.ok ? current.earnedPoints : 0,
+        summary: finalizer.ok ? current.summary : redact(finalizer.summary),
+        assertions: [...current.assertions, ...finalizer.assertions],
+        evidence: [...current.evidence, ...finalizer.evidence],
+        metadata: {
+          ...current.metadata,
+          ...finalizer.metadata,
+          finalized: true,
+        },
+      });
+    }
     const ordered = enabled.map((item) => results.get(item.id)!);
     return { ...scoreEvaluation(ordered, enabled.length), results: ordered };
   }
