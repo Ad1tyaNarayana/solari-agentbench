@@ -49,4 +49,17 @@ describe("createBenchmarkSnapshot", () => {
     await writeFile(join(snapshot.root, "prompt.md"), "tampered");
     await expect(createBenchmarkSnapshot({ ...f, semanticFiles: ["prompt.md", "z/input.txt"] })).rejects.toThrow(/manifest|digest|tamper/i);
   });
+
+  it("rejects unexpected files in an existing digest directory", async () => {
+    const f = await fixture();
+    const snapshot = await createBenchmarkSnapshot({ ...f, semanticFiles: ["prompt.md", "z/input.txt"] });
+    await writeFile(join(snapshot.root, "extra.txt"), "unexpected");
+    await expect(createBenchmarkSnapshot({ ...f, semanticFiles: ["prompt.md", "z/input.txt"] })).rejects.toThrow(/unexpected|manifest|digest/i);
+  });
+
+  it("reuses one valid snapshot for concurrent identical creations", async () => {
+    const f = await fixture();
+    const results = await Promise.all(Array.from({ length: 4 }, () => createBenchmarkSnapshot({ ...f, semanticFiles: ["prompt.md", "z/input.txt"] })));
+    expect(new Set(results.map((result) => result.root)).size).toBe(1);
+  });
 });

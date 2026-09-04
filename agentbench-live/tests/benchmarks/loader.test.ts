@@ -72,11 +72,18 @@ describe("BenchmarkLoader path safety", () => {
     const fixture = await createPack();
     await writeFile(join(fixture.root, "tasks/task/verify.py"), "print('ok')");
     await writeFile(join(fixture.root, "tasks/task/expected.json"), "{}");
-    const task = fixture.taskYaml.replace("config: { subject: result.txt }", "config: { command: [python, verify.py], expected: expected.json }");
+    const task = fixture.taskYaml.replace("type: file", "type: command").replace("config: { subject: result.txt }", "config: { command: [python, verify.py], expected: expected.json }");
     await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
     const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
     await expect(access(join(loaded.snapshot.root, "tasks/task/verify.py"))).resolves.toBeUndefined();
     await expect(readFile(join(loaded.snapshot.root, "tasks/task/expected.json"), "utf8")).resolves.toBe("{}");
+  });
+
+  it("does not treat asset-looking keys on unrelated evaluator types as files", async () => {
+    const fixture = await createPack();
+    const task = fixture.taskYaml.replace("type: file", "type: numeric").replace("config: { subject: result.txt }", "config: { script: missing.py }");
+    await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
+    await expect(new BenchmarkLoader(fixture.snapshots).load(fixture.root)).resolves.toBeTruthy();
   });
 
   it("rejects a task-folder symlink that resolves outside the pack", async () => {

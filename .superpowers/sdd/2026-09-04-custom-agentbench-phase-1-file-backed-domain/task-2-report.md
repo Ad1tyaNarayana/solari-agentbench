@@ -80,3 +80,36 @@ GREEN: same command after implementation — 2 files passed, 13 tests passed.
 No remaining concerns within Task 2 scope. The explicit evaluator asset-key contract intentionally avoids treating arbitrary evaluator configuration strings as files.
 
 Fix implementation commit: `c8a0fad5c816b444d7b6af393a7f991f97d6ff79` (`fix(agentbench): harden benchmark asset loading`).
+
+## Fix Round 2/5
+
+### Findings addressed
+
+- Evaluator asset extraction is now dispatched by `evaluator.type`; schema uses `config.schema`, model-judge uses `config.rubric`, and command uses recognized path-bearing command arguments plus explicitly supported `expected`/`script`/`fixture` keys. Unrelated evaluator types do not resolve same-named keys.
+- All task-root entries, including symlinked directories, are resolved through containment validation; escaping task-directory links are rejected.
+- Existing snapshots are recursively enumerated and must contain exactly `manifest.json` plus declared semantic files; every declared file is checked for size and SHA-256.
+- Snapshot publication attempts atomic rename first and handles `EEXIST`/`EPERM`/`ENOTEMPTY` collisions by verifying and reusing the winner, supporting concurrent identical loads without TOCTOU access checks or leaked temporary directories.
+
+### TDD evidence
+
+RED: `pnpm --dir agentbench-live exec vitest run tests/benchmarks/loader.test.ts tests/benchmarks/snapshot.test.ts`
+
+Result: 3 expected regression failures (asset-looking key on unrelated type was incorrectly loaded, injected extra file was accepted, and concurrent identical creation threw a rename collision); 13 passed and 3 failed.
+
+GREEN: same command after implementation — 2 files passed, 16 tests passed.
+
+### Covering verification
+
+- `pnpm --dir agentbench-live exec vitest run tests/benchmarks tests/core/security.test.ts`: 4 files, 44 tests passed.
+- `pnpm --dir agentbench-live test`: 25 files, 142 tests passed, 1 skipped.
+- `pnpm --dir agentbench-live exec next typegen`: passed.
+- `pnpm --dir agentbench-live exec tsc --noEmit`: passed.
+
+### Files changed
+
+- `agentbench-live/src/core/benchmarks/loader.ts`
+- `agentbench-live/src/core/benchmarks/snapshot.ts`
+- `agentbench-live/tests/benchmarks/loader.test.ts`
+- `agentbench-live/tests/benchmarks/snapshot.test.ts`
+
+Fix implementation commit hash will be recorded after commit.
