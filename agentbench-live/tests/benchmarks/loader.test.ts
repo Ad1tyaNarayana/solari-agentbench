@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, symlink, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -65,6 +65,28 @@ describe("BenchmarkLoader path safety", () => {
       throw error;
     }
     await writeFile(join(fixture.root, "tasks/task/task.yaml"), fixture.taskYaml.replace("prompt.md", "linked.md"));
+    await expect(new BenchmarkLoader(fixture.snapshots).load(fixture.root)).rejects.toThrow(/path escapes benchmark root/i);
+  });
+
+  it("snapshots canonical evaluator asset declarations including basename command files", async () => {
+    const fixture = await createPack();
+    await writeFile(join(fixture.root, "tasks/task/verify.py"), "print('ok')");
+    await writeFile(join(fixture.root, "tasks/task/expected.json"), "{}");
+    const task = fixture.taskYaml.replace("config: { subject: result.txt }", "config: { command: [python, verify.py], expected: expected.json }");
+    await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
+    const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
+    await expect(access(join(loaded.snapshot.root, "tasks/task/verify.py"))).resolves.toBeUndefined();
+    await expect(readFile(join(loaded.snapshot.root, "tasks/task/expected.json"), "utf8")).resolves.toBe("{}");
+  });
+
+  it("rejects a task-folder symlink that resolves outside the pack", async () => {
+    const fixture = await createPack();
+    const outside = await mkdtemp(join(tmpdir(), "agentbench-task-outside-"));
+    await mkdir(join(outside, "task"));
+    await writeFile(join(outside, "task", "task.yaml"), fixture.taskYaml);
+    await writeFile(join(outside, "task", "prompt.md"), "outside");
+    try { await symlink(join(outside, "task"), join(fixture.root, "tasks", "linked"), "junction"); }
+    catch (error) { if (process.platform === "win32" && /privilege|EPERM|operation not permitted/i.test(String(error))) return; throw error; }
     await expect(new BenchmarkLoader(fixture.snapshots).load(fixture.root)).rejects.toThrow(/path escapes benchmark root/i);
   });
 });

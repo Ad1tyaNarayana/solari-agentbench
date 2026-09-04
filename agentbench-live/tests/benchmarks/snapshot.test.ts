@@ -42,4 +42,11 @@ describe("createBenchmarkSnapshot", () => {
     const snapshot = await createBenchmarkSnapshot({ ...f, semanticFiles: ["z/input.txt", "prompt.md"] });
     expect(snapshot.files.map((entry) => entry.path)).toEqual(["prompt.md", "z/input.txt"]);
   });
+
+  it("rejects a tampered existing digest directory", async () => {
+    const f = await fixture();
+    const snapshot = await createBenchmarkSnapshot({ ...f, semanticFiles: ["prompt.md", "z/input.txt"] });
+    await writeFile(join(snapshot.root, "prompt.md"), "tampered");
+    await expect(createBenchmarkSnapshot({ ...f, semanticFiles: ["prompt.md", "z/input.txt"] })).rejects.toThrow(/manifest|digest|tamper/i);
+  });
 });
