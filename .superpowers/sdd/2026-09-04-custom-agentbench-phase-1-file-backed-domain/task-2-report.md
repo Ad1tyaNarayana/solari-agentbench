@@ -113,3 +113,29 @@ GREEN: same command after implementation — 2 files passed, 16 tests passed.
 - `agentbench-live/tests/benchmarks/snapshot.test.ts`
 
 Fix implementation commit: `46b97342d96b7a694728beb13267f6bef7575de5` (`fix(agentbench): make loader assets type-specific`).
+
+## Fix Round 3/5
+
+### Findings addressed
+
+Replaced shared/global evaluator config recursion with exact evaluator-type dispatch: schema extracts only `config.schema`; model-judge only `config.rubric`; command extracts recognized path-bearing `config.command` arguments and explicitly supported `config.script`, `config.expected`, and `config.fixture`. Added negative regressions proving schema `script` and model-judge `schema` are ignored, while canonical command assets remain positive.
+
+### TDD evidence
+
+RED: `pnpm --dir agentbench-live exec vitest run tests/benchmarks/loader.test.ts tests/benchmarks/snapshot.test.ts` — 2 expected failures (schema `script` and model-judge `schema` were incorrectly loaded), 16 passed.
+
+GREEN: same command — 2 files passed, 18 tests passed.
+
+### Covering verification
+
+- `pnpm --dir agentbench-live exec vitest run tests/benchmarks tests/core/security.test.ts`: 4 files, 46 tests passed.
+- `pnpm --dir agentbench-live test`: 25 files, 144 tests passed, 1 skipped.
+- `pnpm --dir agentbench-live exec next typegen`: passed.
+- `pnpm --dir agentbench-live exec tsc --noEmit`: passed.
+
+### Files changed
+
+- `agentbench-live/src/core/benchmarks/loader.ts`
+- `agentbench-live/tests/benchmarks/loader.test.ts`
+
+Fix implementation commit hash will be recorded after commit.
