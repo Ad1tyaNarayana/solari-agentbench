@@ -1,14 +1,12 @@
 schemaVersion: 1
 agents:
-  - schemaVersion: 1
-    id: sol-low
+  - id: sol-low
     name: Sol · Low
     provider: codex
     model: gpt-5.6-sol
     reasoningEffort: low
     harness: { id: codex-sdk, version: local }
-  - schemaVersion: 1
-    id: luna-high
+  - id: luna-high
     name: Luna · High
     provider: codex
     model: gpt-5.6-luna

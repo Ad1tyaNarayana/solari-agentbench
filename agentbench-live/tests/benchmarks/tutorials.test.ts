@@ -1,5 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,6 +11,64 @@ import { agents as legacyAgents } from "@/core/tasks/registry";
 import { sameStatsSeedCsv, sameStatsTask } from "@/core/tasks/same-stats";
 import { urlShortenerTask } from "@/core/tasks/url-shortener";
 const pack = join(process.cwd(), "benchmarks/tutorials/agentbench-live");
+
+async function createPackFixture({
+  benchmarkId,
+  taskId,
+  agentId,
+}: {
+  benchmarkId: string;
+  taskId: string;
+  agentId: string;
+}): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "agentbench-collision-pack-"));
+  const taskRoot = join(root, "tasks", taskId);
+  await mkdir(taskRoot, { recursive: true });
+  await Promise.all([
+    writeFile(
+      join(root, "benchmark.yaml"),
+      `schemaVersion: 1
+id: ${benchmarkId}
+name: ${benchmarkId}
+version: 1.0.0
+taskRoots: [tasks]
+defaults:
+  timeoutSeconds: 30
+  maxConcurrency: 1
+  submissionDirectory: submission
+`,
+    ),
+    writeFile(
+      join(root, "agents.yaml"),
+      `schemaVersion: 1
+agents:
+  - id: ${agentId}
+    name: ${agentId}
+    provider: codex
+    harness: { id: codex-sdk, version: local }
+`,
+    ),
+    writeFile(
+      join(taskRoot, "task.yaml"),
+      `schemaVersion: 1
+id: ${taskId}
+name: ${taskId}
+prompt: prompt.md
+fixtures: []
+resources:
+  allowed: []
+  planningRequired: true
+  budget: { browserSessions: 0, sandboxes: 0, desktops: 0, totalMinutes: 1 }
+submission: { directory: submission, required: [] }
+evaluators:
+  - { id: complete, type: command, weight: 100 }
+`,
+    ),
+    writeFile(join(taskRoot, "prompt.md"), "Complete the task."),
+  ]);
+  return root;
+}
+
 describe("migrated tutorial benchmark", () => {
   it("projects canonical files to the legacy task and agent contracts", async () => {
     const catalog = new BenchmarkCatalog([pack], new BenchmarkLoader(await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-"))));
@@ -43,6 +100,56 @@ describe("migrated tutorial benchmark", () => {
     expect(failure).toMatchObject({ code: "benchmark_invalid" });
     expect((failure as Error).message).toMatch(/duplicate benchmark id.*agentbench-live/i);
     expect((failure as Error).message).not.toContain(pack);
+  });
+
+  it("rejects task ID collisions across differently identified benchmarks", async () => {
+    const first = await createPackFixture({
+      benchmarkId: "benchmark-alpha",
+      taskId: "shared-task",
+      agentId: "agent-alpha",
+    });
+    const second = await createPackFixture({
+      benchmarkId: "benchmark-beta",
+      taskId: "shared-task",
+      agentId: "agent-beta",
+    });
+    const catalog = new BenchmarkCatalog(
+      [first, second],
+      new BenchmarkLoader(
+        await mkdtemp(join(tmpdir(), "agentbench-collision-snapshots-")),
+      ),
+    );
+
+    await expect(catalog.discover()).rejects.toMatchObject({
+      code: "benchmark_invalid",
+      message:
+        "Duplicate task id shared-task in benchmarks benchmark-alpha and benchmark-beta",
+    });
+  });
+
+  it("rejects agent ID collisions across differently identified benchmarks", async () => {
+    const first = await createPackFixture({
+      benchmarkId: "benchmark-alpha",
+      taskId: "task-alpha",
+      agentId: "shared-agent",
+    });
+    const second = await createPackFixture({
+      benchmarkId: "benchmark-beta",
+      taskId: "task-beta",
+      agentId: "shared-agent",
+    });
+    const catalog = new BenchmarkCatalog(
+      [first, second],
+      new BenchmarkLoader(
+        await mkdtemp(join(tmpdir(), "agentbench-collision-snapshots-")),
+      ),
+    );
+
+    await expect(catalog.discover()).rejects.toMatchObject({
+      code: "benchmark_invalid",
+      message:
+        "Duplicate agent id shared-agent in benchmarks benchmark-alpha and benchmark-beta",
+    });
   });
 
   it.each([

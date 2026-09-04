@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { AgentsFileSchema, BenchmarkFileSchema, TaskFileSchema, parseBenchmarkFile, parseTaskFile } from "@/core/benchmarks/schema";
+import {
+  AgentsFileSchema,
+  BenchmarkFileSchema,
+  TaskFileSchema,
+  parseAgentsFile,
+  parseBenchmarkFile,
+  parseTaskFile,
+} from "@/core/benchmarks/schema";
 import { BenchmarkValidationError } from "@/core/benchmarks/types";
 
 const valid = {
@@ -52,4 +59,33 @@ describe("parseBenchmarkFile", () => {
     expect(manifest).not.toHaveProperty("tasks");
   });
   it.each(["/tmp/tasks", "C:\\tasks", "../../tasks"])("rejects unsafe task root %s", (taskRoots) => expect(() => parseBenchmarkFile({ schemaVersion: 1, id: "bench", name: "Bench", version: "1.0.0", taskRoots: [taskRoots], defaults: { timeoutSeconds: 30, maxConcurrency: 1, submissionDirectory: "submission" } })).toThrow(/relative|path|traversal/i));
+});
+
+describe("parseAgentsFile", () => {
+  it("parses the canonical file-level schema version and normalizes agent defaults", () => {
+    const agents = parseAgentsFile(`
+schemaVersion: 1
+agents:
+  - id: codex-local
+    name: Codex Local
+    provider: codex
+    model: gpt-5.6-sol
+    reasoningEffort: high
+    harness:
+      id: codex-sdk
+      version: local
+`);
+
+    expect(agents).toEqual([
+      {
+        id: "codex-local",
+        name: "Codex Local",
+        provider: "codex",
+        model: "gpt-5.6-sol",
+        reasoningEffort: "high",
+        harness: { id: "codex-sdk", version: "local" },
+        options: {},
+      },
+    ]);
+  });
 });

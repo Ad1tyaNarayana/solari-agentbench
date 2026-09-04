@@ -9,7 +9,7 @@ async function createPack() {
   const snapshots = await mkdtemp(join(tmpdir(), "agentbench-snapshots-"));
   await mkdir(join(root, "tasks", "task", "fixtures"), { recursive: true });
   const benchmarkYaml = `schemaVersion: 1\nid: demo\nname: Demo\nversion: 1.0.0\ntaskRoots: [tasks]\ndefaults:\n  timeoutSeconds: 30\n  maxConcurrency: 1\n  submissionDirectory: submission\n`;
-  const agentsYaml = `schemaVersion: 1\nagents:\n  - schemaVersion: 1\n    id: agent\n    name: Agent\n    provider: test\n    harness: { id: test, version: '1' }\n`;
+  const agentsYaml = `schemaVersion: 1\nagents:\n  - id: agent\n    name: Agent\n    provider: test\n    harness: { id: test, version: '1' }\n`;
   const taskYaml = `schemaVersion: 1\nid: task\nname: Task\nprompt: prompt.md\nfixtures: [fixtures/input.txt]\nresources:\n  allowed: [sandbox]\n  planningRequired: false\n  budget: { browserSessions: 0, sandboxes: 1, desktops: 0, totalMinutes: 1 }\nsubmission: { directory: submission, required: [result.txt] }\nevaluators:\n  - id: files\n    type: file\n    weight: 100\n    config: { subject: result.txt }\n`;
   await writeFile(join(root, "benchmark.yaml"), benchmarkYaml);
   await writeFile(join(root, "agents.yaml"), agentsYaml);
