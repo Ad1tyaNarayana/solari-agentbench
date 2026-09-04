@@ -1,6 +1,6 @@
-import type { AgentDefinition, BenchmarkDiagnostic, BenchmarkTaskDefinition } from "@/core/benchmarks/types";
+import type { AgentDefinition, BenchmarkDiagnostic, BenchmarkTaskDefinition, EvaluationPolicy } from "@/core/benchmarks/types";
 
-export type BenchmarkDraftTask = Omit<BenchmarkTaskDefinition, "promptPath" | "prompt" | "compatibility" | "snapshotPrefix"> & { prompt: string };
+export type BenchmarkDraftTask = Omit<BenchmarkTaskDefinition, "promptPath" | "prompt" | "compatibility" | "evaluationPolicy" | "snapshotPrefix"> & { prompt: string; evaluationPolicy?: EvaluationPolicy };
 export type BenchmarkDraft = {
   schemaVersion: 1; id: string; name: string; version: string; description?: string;
   defaults: { timeoutSeconds: number; maxConcurrency: number; submissionDirectory: string };

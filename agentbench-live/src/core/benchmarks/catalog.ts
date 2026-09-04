@@ -200,6 +200,7 @@ export class BenchmarkCatalog {
       },
       verifier: compatibility?.legacyVerifier,
       evaluators: raw.evaluators.map((item) => ({ ...item, prerequisites: [...item.prerequisites], config: { ...item.config } })),
+      evaluationPolicy: { ...raw.evaluationPolicy },
       snapshotPrefix: raw.snapshotPrefix,
     };
   }

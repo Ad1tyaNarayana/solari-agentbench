@@ -49,6 +49,7 @@ const task: BenchmarkTaskDefinition = {
     directory: "submission",
     required: ["results.json"],
   },
+  evaluationPolicy: { maxModelJudgeWeight: 30, allowModelJudgeMajority: false },
   evaluators: [],
 };
 

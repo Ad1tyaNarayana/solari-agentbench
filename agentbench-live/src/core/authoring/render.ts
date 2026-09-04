@@ -1,5 +1,6 @@
 import { stringify } from "yaml";
 import { parseAgentsFile, parseBenchmarkFile, parseTaskFile } from "@/core/benchmarks/schema";
+import { DEFAULT_EVALUATION_POLICY } from "@/core/benchmarks/types";
 import type { BenchmarkDraft, RenderedBenchmarkFile } from "./types";
 
 const newline = (value: string) => `${value.replace(/\r\n/g, "\n").replace(/\n+$/, "")}\n`;
@@ -25,7 +26,7 @@ export function renderBenchmark(draft: BenchmarkDraft): RenderedBenchmarkFile[] 
       }
       return { ...evaluator, config };
     });
-    const taskFile = { schemaVersion: 1, id: task.id, name: task.name, prompt: "prompt.md", fixtures: task.fixtures, resources: { allowed: task.allowedPrimitives, planningRequired: task.planningRequired, budget: task.resourceLimits }, submission: task.submission, evaluators };
+    const taskFile = { schemaVersion: 1, id: task.id, name: task.name, prompt: "prompt.md", fixtures: task.fixtures, resources: { allowed: task.allowedPrimitives, planningRequired: task.planningRequired, budget: task.resourceLimits }, submission: task.submission, evaluationPolicy: task.evaluationPolicy ?? DEFAULT_EVALUATION_POLICY, evaluators };
     const contents = yaml(taskFile); parseTaskFile(contents);
     files.push({ path: `tasks/${task.id}/task.yaml`, contents, language: "yaml" });
     files.push({ path: `tasks/${task.id}/prompt.md`, contents: newline(task.prompt), language: "markdown" });

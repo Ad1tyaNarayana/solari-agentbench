@@ -1,5 +1,5 @@
 import type { Primitive } from "./plan";
-import type { EvaluatorDefinition } from "@/core/benchmarks/types";
+import type { EvaluationPolicy, EvaluatorDefinition } from "@/core/benchmarks/types";
 
 export type ResourceBudget = {
   totalMs: number;
@@ -18,5 +18,6 @@ export type TaskManifest = {
   budget: ResourceBudget;
   verifier?: string;
   evaluators?: EvaluatorDefinition[];
+  evaluationPolicy?: EvaluationPolicy;
   snapshotPrefix?: string;
 };

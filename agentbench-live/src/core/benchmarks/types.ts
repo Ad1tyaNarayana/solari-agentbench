@@ -11,6 +11,16 @@ export type EvaluatorDefinition = {
   config: Record<string, unknown>;
 };
 
+export type EvaluationPolicy = {
+  maxModelJudgeWeight: number;
+  allowModelJudgeMajority: boolean;
+};
+
+export const DEFAULT_EVALUATION_POLICY: EvaluationPolicy = {
+  maxModelJudgeWeight: 30,
+  allowModelJudgeMajority: false,
+};
+
 export type BenchmarkTaskDefinition = {
   id: string;
   name: string;
@@ -26,6 +36,7 @@ export type BenchmarkTaskDefinition = {
     legacyVerifier: string;
     legacyBudgetMs: { totalMs: number; browserMs: number; sandboxMs: number; desktopMs: number };
   };
+  evaluationPolicy: EvaluationPolicy;
   evaluators: EvaluatorDefinition[];
   snapshotPrefix?: string;
 };

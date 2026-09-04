@@ -12,8 +12,38 @@ test("renders deterministic canonical files with stable final newlines", () => {
 });
 
 test("renders editable rubric text as a separate immutable asset", () => {
-  const judged = structuredClone(draft); judged.tasks[0].evaluators = [{ id: "judge", type: "model-judge", weight: 100, enabled: true, prerequisites: [], config: { provider: "codex", rubric: "rubric.md", rubricText: "Judge correctness.", inputs: ["result.json"], sampling: {} } }];
+  const judged = structuredClone(draft); judged.tasks[0].evaluationPolicy = { maxModelJudgeWeight: 100, allowModelJudgeMajority: true }; judged.tasks[0].evaluators = [{ id: "judge", type: "model-judge", weight: 100, enabled: true, prerequisites: [], config: { provider: "codex", rubric: "rubric.md", rubricText: "Judge correctness.", inputs: ["result.json"], sampling: {} } }];
   const files = renderBenchmark(judged);
   expect(files.find((file) => file.path === "tasks/task-one/rubric.md")?.contents).toBe("Judge correctness.\n");
   expect(files.find((file) => file.path.endsWith("task.yaml"))?.contents).not.toContain("rubricText");
+});
+
+test("renders an explicit model-judge authority policy as canonical task data", () => {
+  const judged = structuredClone(draft);
+  judged.tasks[0].evaluationPolicy = {
+    maxModelJudgeWeight: 100,
+    allowModelJudgeMajority: true,
+  };
+  judged.tasks[0].evaluators = [{
+    id: "judge",
+    type: "model-judge",
+    weight: 100,
+    enabled: true,
+    prerequisites: [],
+    config: {
+      provider: "codex",
+      rubric: "rubric.md",
+      rubricText: "Judge correctness.",
+      inputs: ["result.json"],
+      sampling: {},
+    },
+  }];
+
+  const taskYaml = renderBenchmark(judged).find((file) =>
+    file.path.endsWith("task.yaml"),
+  )?.contents;
+
+  expect(taskYaml).toContain("evaluationPolicy:");
+  expect(taskYaml).toContain("maxModelJudgeWeight: 100");
+  expect(taskYaml).toContain("allowModelJudgeMajority: true");
 });

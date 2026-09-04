@@ -6,9 +6,10 @@ import type {
   BenchmarkDiagnostic,
   BenchmarkFileManifest,
   BenchmarkTaskDefinition,
+  EvaluationPolicy,
   EvaluatorDefinition,
 } from "./types";
-import { BenchmarkValidationError } from "./types";
+import { BenchmarkValidationError, DEFAULT_EVALUATION_POLICY } from "./types";
 
 const primitiveSchema = z.enum(["browser", "sandbox", "desktop"]);
 const evaluatorTypeSchema = z.enum([
@@ -87,6 +88,13 @@ const compatibilitySchema = z
   })
   .strict();
 
+const evaluationPolicySchema = z
+  .object({
+    maxModelJudgeWeight: z.number().min(0).max(100),
+    allowModelJudgeMajority: z.boolean(),
+  })
+  .strict();
+
 const taskSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -97,6 +105,7 @@ const taskSchema = z
     resources: resourcesSchema,
     submission: submissionSchema,
     compatibility: compatibilitySchema.optional(),
+    evaluationPolicy: evaluationPolicySchema.default(DEFAULT_EVALUATION_POLICY),
     evaluators: z.array(evaluatorSchema).min(1),
   })
   .strict();
@@ -227,6 +236,34 @@ function validateEvaluatorWeights(items: EvaluatorDefinition[]): void {
   }
 }
 
+function validateModelJudgeAuthority(
+  items: EvaluatorDefinition[],
+  policy: EvaluationPolicy,
+): void {
+  const weight = items
+    .filter((evaluator) => evaluator.enabled && evaluator.type === "model-judge")
+    .reduce((sum, evaluator) => sum + evaluator.weight, 0);
+
+  if (weight > policy.maxModelJudgeWeight) {
+    throw new BenchmarkValidationError([
+      {
+        path: "evaluationPolicy.maxModelJudgeWeight",
+        code: "model_judge_authority",
+        message: `enabled model-judge weight ${weight} exceeds the allowed ${policy.maxModelJudgeWeight}`,
+      },
+    ]);
+  }
+  if (weight > 50 && !policy.allowModelJudgeMajority) {
+    throw new BenchmarkValidationError([
+      {
+        path: "evaluationPolicy.allowModelJudgeMajority",
+        code: "model_judge_majority",
+        message: "model-judge majority requires explicit opt-in",
+      },
+    ]);
+  }
+}
+
 function validateEvaluatorReferences(
   items: EvaluatorDefinition[],
   evaluatorsById: ReadonlyMap<string, EvaluatorDefinition>,
@@ -287,6 +324,10 @@ function validateEvaluators(items: EvaluatorDefinition[]): void {
 
 function taskResult(raw: z.infer<typeof taskSchema>): BenchmarkTaskDefinition {
   validateEvaluators(raw.evaluators as EvaluatorDefinition[]);
+  validateModelJudgeAuthority(
+    raw.evaluators as EvaluatorDefinition[],
+    raw.evaluationPolicy,
+  );
   return {
     id: raw.id,
     name: raw.name,
@@ -298,6 +339,7 @@ function taskResult(raw: z.infer<typeof taskSchema>): BenchmarkTaskDefinition {
     resourceLimits: raw.resources.budget,
     submission: raw.submission,
     compatibility: raw.compatibility,
+    evaluationPolicy: { ...raw.evaluationPolicy },
     evaluators: raw.evaluators as EvaluatorDefinition[],
   };
 }

@@ -29,6 +29,35 @@ const valid = {
   evaluators: [{ id: "shape", type: "schema", weight: 100, config: {} }],
 };
 
+function taskWithJudgeWeight(weight: number) {
+  return {
+    ...valid,
+    evaluators: [
+      {
+        id: "deterministic",
+        type: "file",
+        weight: 100 - weight,
+        enabled: true,
+        prerequisites: [],
+        config: { subject: "results.json", assertion: "present" },
+      },
+      {
+        id: "judge",
+        type: "model-judge",
+        weight,
+        enabled: true,
+        prerequisites: [],
+        config: {
+          provider: "codex",
+          rubric: "rubric.md",
+          inputs: ["results.json"],
+          sampling: {},
+        },
+      },
+    ],
+  };
+}
+
 describe("parseTaskFile", () => {
   it("exports the canonical strict schemas", () => {
     expect(TaskFileSchema).toBeDefined();
@@ -41,6 +70,39 @@ describe("parseTaskFile", () => {
   it("rejects negative budget", () => expect(() => parseTaskFile({ ...valid, resources: { ...valid.resources, budget: { ...valid.resources.budget, totalMinutes: -1 } } })).toThrow(/greater than or equal to 0|positive|>=0/i));
   it("rejects missing prompt path", () => expect(() => parseTaskFile({ ...valid, prompt: "" })).toThrow(/prompt/i));
   it("requires enabled weights to total 100", () => expect(() => parseTaskFile({ ...valid, evaluators: [{ ...valid.evaluators[0], weight: 90 }] })).toThrow(/weights.*100/i));
+  it("normalizes the default model-judge authority policy", () => {
+    expect(parseTaskFile(valid).evaluationPolicy).toEqual({
+      maxModelJudgeWeight: 30,
+      allowModelJudgeMajority: false,
+    });
+  });
+  it.each([0, 30])("accepts %i model-judge points under the default policy", (weight) => {
+    expect(() => parseTaskFile(taskWithJudgeWeight(weight))).not.toThrow();
+  });
+  it.each([31, 100])("rejects %i model-judge points without explicit opt-in", (weight) => {
+    expect(() => parseTaskFile(taskWithJudgeWeight(weight))).toThrow(/model-judge.*30/i);
+  });
+  it("accepts a model-judge majority only with explicit opt-in", () => {
+    expect(parseTaskFile({
+      ...taskWithJudgeWeight(100),
+      evaluationPolicy: {
+        maxModelJudgeWeight: 100,
+        allowModelJudgeMajority: true,
+      },
+    }).evaluationPolicy).toEqual({
+      maxModelJudgeWeight: 100,
+      allowModelJudgeMajority: true,
+    });
+  });
+  it("rejects a majority when the cap permits it but majority opt-in is false", () => {
+    expect(() => parseTaskFile({
+      ...taskWithJudgeWeight(60),
+      evaluationPolicy: {
+        maxModelJudgeWeight: 100,
+        allowModelJudgeMajority: false,
+      },
+    })).toThrow(/majority.*opt-in/i);
+  });
   it.each(["/tmp/prompt.md", "C:\\tmp\\prompt.md", "../../outside.md"])("rejects unsafe prompt path %s", (prompt) => expect(() => parseTaskFile({ ...valid, prompt })).toThrow(/relative|path|traversal/i));
   it("rejects unsafe fixture and submission paths", () => {
     expect(() => parseTaskFile({ ...valid, fixtures: ["/tmp/input.csv"] })).toThrow(/relative|path/i);

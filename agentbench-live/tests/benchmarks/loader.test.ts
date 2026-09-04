@@ -132,7 +132,8 @@ agents:
     await writeFile(join(fixture.root, "tasks/task/rubrics/quality.md"), "Award points for correctness.");
     const task = fixture.taskYaml
       .replace("type: file", "type: model-judge")
-      .replace("config: { subject: result.txt }", "config: { rubric: rubrics/quality.md }");
+      .replace("config: { subject: result.txt }", "config: { rubric: rubrics/quality.md }")
+      .replace("evaluators:", "evaluationPolicy: { maxModelJudgeWeight: 100, allowModelJudgeMajority: true }\nevaluators:");
     await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
 
     const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
@@ -189,7 +190,7 @@ agents:
 
   it("does not treat schema as an asset on model-judge evaluators", async () => {
     const fixture = await createPack();
-    const task = fixture.taskYaml.replace("type: file", "type: model-judge").replace("config: { subject: result.txt }", "config: { schema: missing.json }");
+    const task = fixture.taskYaml.replace("type: file", "type: model-judge").replace("config: { subject: result.txt }", "config: { schema: missing.json }").replace("evaluators:", "evaluationPolicy: { maxModelJudgeWeight: 100, allowModelJudgeMajority: true }\nevaluators:");
     await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
     await expect(new BenchmarkLoader(fixture.snapshots).load(fixture.root)).resolves.toBeTruthy();
   });

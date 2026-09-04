@@ -16,6 +16,7 @@ const task: BenchmarkTaskDefinition = {
   planningRequired: true,
   resourceLimits: { browserSessions: 0, sandboxes: 1, desktops: 0, totalMinutes: 5 },
   submission: { directory: "submission", required: ["results.json"] },
+  evaluationPolicy: { maxModelJudgeWeight: 30, allowModelJudgeMajority: false },
   evaluators: [],
 };
 const snapshot = { digest: "digest", root: process.cwd(), files: [] };

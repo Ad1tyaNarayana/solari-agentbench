@@ -63,6 +63,7 @@ const benchmark: BenchmarkDefinition = {
         totalMinutes: 5,
       },
       submission: { directory: "submission", required: ["results.json"] },
+      evaluationPolicy: { maxModelJudgeWeight: 30, allowModelJudgeMajority: false },
       evaluators: [],
     },
   ],

@@ -17,7 +17,8 @@ const task: BenchmarkTaskDefinition = {
   id: "sample", name: "Sample", promptPath: "prompt.md", prompt: "Build it.", fixtures: [],
   allowedPrimitives: ["sandbox"], planningRequired: true,
   resourceLimits: { browserSessions: 0, sandboxes: 1, desktops: 0, totalMinutes: 5 },
-  submission: { directory: "submission", required: ["results.json"] }, evaluators: [],
+  submission: { directory: "submission", required: ["results.json"] },
+  evaluationPolicy: { maxModelJudgeWeight: 30, allowModelJudgeMajority: false }, evaluators: [],
 };
 const snapshot = { digest: "digest", root: process.cwd(), files: [] };
 const agent: AgentDefinition = {
