@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { CompositeCredentialStore } from "@/core/credentials/composite-store";
 import { EnvironmentCredentialStore } from "@/core/credentials/environment-store";
-import { LocalFileCredentialStore } from "@/core/credentials/local-file-store";
+import {
+  isSecureCredentialFileMode,
+  LocalFileCredentialStore,
+} from "@/core/credentials/local-file-store";
 import type { SecretValue } from "@/core/credentials/types";
 
 const fixtureRoots: string[] = [];
@@ -264,6 +267,32 @@ describe("LocalFileCredentialStore", () => {
     expect((rejection as Error).message).not.toContain("label-secret-value");
   });
 
+  test.each([0o200, 0o000])(
+    "classifies owner-unreadable POSIX mode %s as insecure",
+    (mode) => {
+      expect(isSecureCredentialFileMode(mode)).toBe(false);
+    },
+  );
+
+  for (const mode of [0o200, 0o000]) {
+    test.skipIf(process.platform === "win32")(
+      `rejects an owner-unreadable credential file with mode ${mode.toString(8)}`,
+      async () => {
+        const root = await createFixtureRoot();
+        await writeCredentialFile(
+          root,
+          { schemaVersion: 1, credentials: {} },
+          mode,
+        );
+        const store = new LocalFileCredentialStore({ cwd: root, environment: {} });
+
+        await expect(store.listMetadata()).rejects.toThrow(
+          /owner-readable and owner-only permissions/i,
+        );
+      },
+    );
+  }
+
   test.skipIf(process.platform === "win32")(
     "rejects credential files readable by group or other users",
     async () => {
@@ -275,7 +304,9 @@ describe("LocalFileCredentialStore", () => {
       );
       const store = new LocalFileCredentialStore({ cwd: root, environment: {} });
 
-      await expect(store.listMetadata()).rejects.toThrow(/owner-only permissions/i);
+      await expect(store.listMetadata()).rejects.toThrow(
+        /owner-readable and owner-only permissions/i,
+      );
     },
   );
 });

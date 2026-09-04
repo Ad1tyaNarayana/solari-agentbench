@@ -94,6 +94,47 @@ test("redacts an error thrown from a credential callback before releasing scope"
   expect(snapshotCredentialRedaction().exactValues).toEqual([]);
 });
 
+test("redacts non-enumerable and cyclic error state while preserving error shapes", async () => {
+  const secret = "aggregate-error-secret";
+  const store = environmentStore({ api: secret });
+  const cause = new RangeError(`cause ${secret}`);
+  cause.name = `Cause-${secret}`;
+  const nested = new TypeError(`nested ${secret}`);
+  nested.name = `Nested-${secret}`;
+  const failure = new AggregateError(
+    [nested, `string ${secret}`],
+    `aggregate ${secret}`,
+    { cause },
+  );
+  failure.name = `Aggregate-${secret}`;
+  const detail: { token: string; self?: unknown } = { token: secret };
+  detail.self = detail;
+  Object.assign(failure, { detail });
+  failure.errors.push(failure);
+
+  const rejection = await store
+    .withCredential("api", async () => {
+      throw failure;
+    })
+    .catch((error: unknown) => error);
+
+  expect(rejection).toBe(failure);
+  expect(rejection).toBeInstanceOf(AggregateError);
+  expect(String(failure)).not.toContain(secret);
+  expect(failure.name).not.toContain(secret);
+  expect(failure.cause).toBe(cause);
+  expect(String(cause)).not.toContain(secret);
+  expect(cause.name).not.toContain(secret);
+  expect(failure.errors[0]).toBe(nested);
+  expect(String(failure.errors[0])).not.toContain(secret);
+  expect(failure.errors[1]).toBe("string [REDACTED]");
+  expect(failure.errors[2]).toBe(failure);
+  expect((failure as AggregateError & { detail: typeof detail }).detail).toMatchObject({
+    token: "[REDACTED]",
+  });
+  expect(detail.self).toBe(detail);
+});
+
 test("returns an immutable snapshot for persistence and publication boundaries", async () => {
   const store = environmentStore({ api: "snapshot-secret" });
 

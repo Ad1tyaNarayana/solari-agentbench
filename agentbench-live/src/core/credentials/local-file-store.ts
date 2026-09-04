@@ -30,6 +30,10 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
+export function isSecureCredentialFileMode(mode: number): boolean {
+  return (mode & 0o400) !== 0 && (mode & 0o077) === 0;
+}
+
 function parseCredentialFile(raw: string): LocalCredentialFile {
   let parsed: unknown;
   try {
@@ -133,8 +137,10 @@ export class LocalFileCredentialStore implements CredentialStore {
     if (!stats.isFile()) {
       throw new Error("Local credential file must be a regular file");
     }
-    if (this.#platform !== "win32" && (stats.mode & 0o077) !== 0) {
-      throw new Error("Local credential file must have owner-only permissions");
+    if (this.#platform !== "win32" && !isSecureCredentialFileMode(stats.mode)) {
+      throw new Error(
+        "Local credential file must have owner-readable and owner-only permissions",
+      );
     }
 
     let raw: string;

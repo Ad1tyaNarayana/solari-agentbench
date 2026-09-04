@@ -75,27 +75,44 @@ export function redactCredentialError(
   error: unknown,
   snapshot = snapshotCredentialRedaction(),
 ): unknown {
-  if (!(error instanceof Error)) {
-    return redactCredentialOutput(error, snapshot);
-  }
-
   try {
-    error.message = redactCredentialText(error.message, snapshot);
-    if (error.stack !== undefined) {
-      error.stack = redactCredentialText(error.stack, snapshot);
+    const seen = new WeakSet<object>();
+
+    function sanitize(value: unknown): unknown {
+      if (typeof value === "string") {
+        return redactCredentialText(value, snapshot);
+      }
+      if (value === null || typeof value !== "object") return value;
+      if (seen.has(value)) return value;
+      seen.add(value);
+
+      for (const key of Reflect.ownKeys(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor === undefined || !("value" in descriptor)) continue;
+
+        const sanitizedValue = sanitize(descriptor.value);
+        const sanitizedKey =
+          typeof key === "string"
+            ? redactCredentialText(key, snapshot)
+            : key;
+        const sanitizedDescriptor = {
+          ...descriptor,
+          value: sanitizedValue,
+        };
+
+        if (sanitizedKey !== key) {
+          if (!descriptor.configurable || !Reflect.deleteProperty(value, key)) {
+            throw new Error("Cannot safely redact credential-scoped error state");
+          }
+          Object.defineProperty(value, sanitizedKey, sanitizedDescriptor);
+        } else if (sanitizedValue !== descriptor.value) {
+          Object.defineProperty(value, key, sanitizedDescriptor);
+        }
+      }
+      return value;
     }
-    for (const key of Object.keys(error)) {
-      Object.assign(error, {
-        [key]: redactCredentialOutput(
-          (error as unknown as Record<string, unknown>)[key],
-          snapshot,
-        ),
-      });
-    }
-    if ("cause" in error && error.cause !== undefined) {
-      error.cause = redactCredentialError(error.cause, snapshot);
-    }
-    return error;
+
+    return sanitize(error);
   } catch {
     return new Error("Credential-scoped operation failed");
   }
