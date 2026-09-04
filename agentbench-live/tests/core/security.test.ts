@@ -204,7 +204,7 @@ test("bounded assignment lexer preserves values, JSON, and assignment syntax", (
   });
   const expectedJson = JSON.stringify({
     "a,p,i,k,e,y": "[REDACTED]",
-    "prefix/s:e[c]{r}=e t": "[REDACTED]",
+    "prefix/s:e[c]{r}=e t": "escaped \\\"quote\\\", comma, equals=secret",
     input_tokens: 20,
     output_tokens: false,
     token_count: null,
@@ -220,6 +220,56 @@ test("bounded assignment lexer preserves values, JSON, and assignment syntax", (
   );
 });
 
+test("structured redaction decodes escaped keys and replaces credential containers", () => {
+  const input =
+    '{"t\\u006fken":{"nested":"secret"},"api\\u005fkey":["secret"],"token_details":{"cached":2},"input_tokens":20,"tokens":[1,2],"max_tokens":100,"ordinary":"token=embedded-secret"}';
+
+  const output = redact(input);
+
+  expect(JSON.parse(output)).toEqual({
+    token: "[REDACTED]",
+    api_key: "[REDACTED]",
+    token_details: { cached: 2 },
+    input_tokens: 20,
+    tokens: [1, 2],
+    max_tokens: 100,
+    ordinary: "token=[REDACTED]",
+  });
+});
+
+test("structured redaction preserves telemetry and redacts nested exact keys", () => {
+  const input = JSON.stringify({
+    token_count: null,
+    output_tokens: false,
+    token_usage: { total_tokens: 10, access_token: "secret" },
+    result: { password: { nested: true }, client_secret: ["secret"] },
+  });
+
+  expect(JSON.parse(redact(input))).toEqual({
+    token_count: null,
+    output_tokens: false,
+    token_usage: { total_tokens: 10, access_token: "[REDACTED]" },
+    result: {
+      password: "[REDACTED]",
+      client_secret: "[REDACTED]",
+    },
+  });
+});
+
+test("free-text redaction shields safe OAuth URLs from assignment scanning", () => {
+  expect(
+    redact("endpoint=https://example.test/oauth/token?mode=view"),
+  ).toBe("endpoint=https://example.test/oauth/token?mode=view");
+  expect(
+    redact("callback=https://example.test/cb?api_key=secret"),
+  ).toBe("callback=[REDACTED_SIGNED_URL]");
+});
+
+test("free-text redaction preserves quotes around embedded assignments", () => {
+  const input = String.raw`note="token=abc\"def"`;
+  expect(redact(input)).toBe(String.raw`note="token=[REDACTED]"`);
+});
+
 test.each([
   [127, "[REDACTED]"],
   [128, "[REDACTED]"],
@@ -232,7 +282,9 @@ test.each([
 
     expect(key).toHaveLength(length);
     expect(redact(`${key}=visible`)).toBe(`${key}=${expectedValue}`);
-    expect(redact(quoted)).toBe(JSON.stringify({ [key]: expectedValue }));
+    expect(redact(quoted)).toBe(
+      JSON.stringify({ [key]: "[REDACTED]" }),
+    );
   },
 );
 
@@ -285,7 +337,7 @@ test("bounds punctuation-heavy assignment keys to 128 characters", () => {
     `${atLimit}=[REDACTED]; ${beyondLimit}=visible`,
   );
   expect(redact(quotedAssignments)).toBe(
-    `{"${atLimit}":"[REDACTED]","${beyondLimit}":"visible"}`,
+    `{"${atLimit}":"[REDACTED]","${beyondLimit}":"[REDACTED]"}`,
   );
 });
 

@@ -46,11 +46,9 @@ export function redactCredentialOutput(
 ): unknown {
   const seen = new WeakMap<object, unknown>();
 
-  function visit(item: unknown, redactAllStrings = false): unknown {
+  function visit(item: unknown): unknown {
     if (typeof item === "string") {
-      const sanitized = redactCredentialText(item, snapshot, context);
-      if (redactAllStrings && sanitized === item) return "[REDACTED]";
-      return sanitized;
+      return redactCredentialText(item, snapshot, context);
     }
     if (item === null || typeof item !== "object") return item;
 
@@ -59,17 +57,15 @@ export function redactCredentialOutput(
     if (Array.isArray(item)) {
       const result: unknown[] = [];
       seen.set(item, result);
-      for (const child of item) result.push(visit(child, redactAllStrings));
+      for (const child of item) result.push(visit(child));
       return result;
     }
 
     const result: Record<string, unknown> = {};
     seen.set(item, result);
     for (const [key, child] of Object.entries(item)) {
-      result[redactCredentialText(key, snapshot, context)] = visit(
-        child,
-        redactAllStrings || isCredentialShapedKey(key),
-      );
+      result[redactCredentialText(key, snapshot, context)] =
+        isCredentialShapedKey(key) ? "[REDACTED]" : visit(child);
     }
     return result;
   }
@@ -122,12 +118,11 @@ export function redactCredentialError(
       if (descriptor === undefined) continue;
       const safeKey = redactCredentialText(key, snapshot);
       const sensitive = redactAllStrings || isCredentialShapedKey(key);
-      const safeValue =
-        "value" in descriptor
-          ? sanitize(descriptor.value, sensitive)
-          : sensitive
-            ? "[REDACTED]"
-            : "[REDACTED_ACCESSOR]";
+      const safeValue = sensitive
+        ? "[REDACTED]"
+        : "value" in descriptor
+          ? sanitize(descriptor.value, false)
+          : "[REDACTED_ACCESSOR]";
       defineSafeProperty(target, safeKey, safeValue, descriptor.enumerable ?? false);
     }
   }

@@ -38,7 +38,7 @@ test("redacts every active exact value from nested provider output", async () =>
 
       expect(output).toEqual({
         message: "prefix [REDACTED] suffix",
-        nested: ["[REDACTED]", { authorization: "Bearer [REDACTED]" }],
+        nested: ["[REDACTED]", { authorization: "[REDACTED]" }],
       });
       expect(JSON.stringify(output)).not.toMatch(/exact-secret|ordinary-token/);
     });
@@ -68,6 +68,41 @@ test("redacts nested token fields, credential assignments, and signed URLs on an
   );
 });
 
+test("replaces sensitive containers while preserving token telemetry containers", () => {
+  const output = redactCredentialOutput({
+    token: { nested: "secret", count: 1 },
+    password: ["secret"],
+    token_details: { cached: 2 },
+    input_tokens: 20,
+    tokens: [1, 2],
+    tokenBucket: "ordinary-value",
+  });
+
+  expect(output).toEqual({
+    token: "[REDACTED]",
+    password: "[REDACTED]",
+    token_details: { cached: 2 },
+    input_tokens: 20,
+    tokens: [1, 2],
+    tokenBucket: "ordinary-value",
+  });
+});
+
+test("detached errors replace sensitive provider containers without invoking them", () => {
+  const failure = Object.assign(new Error("provider failed"), {
+    token: Object.freeze({ nested: "secret" }),
+    token_details: Object.freeze({ cached: 2 }),
+  });
+
+  const safe = redactCredentialError(failure) as Error & {
+    token: unknown;
+    token_details: unknown;
+  };
+
+  expect(safe.token).toBe("[REDACTED]");
+  expect(safe.token_details).toEqual({ cached: 2 });
+});
+
 test("redacts JWT and common auth query parameters case-insensitively on any host", () => {
   const output = redactCredentialOutput({
     jwt: "https://identity.example.test/callback?JWT=jwt-secret",
@@ -77,7 +112,7 @@ test("redacts JWT and common auth query parameters case-insensitively on any hos
   });
 
   expect(output).toEqual({
-    jwt: "[REDACTED_SIGNED_URL]",
+    jwt: "[REDACTED]",
     refresh: "[REDACTED_SIGNED_URL]",
     client: "[REDACTED_SIGNED_URL]",
     camel: "[REDACTED_SIGNED_URL]",
