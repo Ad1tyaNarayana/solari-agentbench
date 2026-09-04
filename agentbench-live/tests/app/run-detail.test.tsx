@@ -4,6 +4,13 @@ import type { RunRecord } from "@/core/domain/run";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { LiveRun } from "@/components/live-run";
 import { StageTimeline } from "@/components/stage-timeline";
+import RunDetailPage from "@/app/runs/[id]/page";
+
+const getRun = vi.hoisted(() => vi.fn());
+
+vi.mock("@/server/container", () => ({
+  getServerContainer: () => ({ getRun }),
+}));
 
 const researchRun: RunRecord = {
   id: "research-1",
@@ -29,6 +36,38 @@ const researchRun: RunRecord = {
   createdAt: "2026-09-01T00:00:00.000Z",
   completedAt: "2026-09-01T00:03:00.000Z",
 };
+
+test("renders persisted custom run identity without requiring tutorial registry entries", async () => {
+  getRun.mockReturnValue({
+    ...researchRun,
+    id: "custom-run",
+    taskId: "custom-task",
+    taskVersion: "2.4.0",
+    agentId: "custom-agent",
+    model: "custom-model-v3",
+    benchmarkId: "custom-benchmark",
+    benchmarkVersion: "2.4.0",
+    benchmarkDigest: "abc123",
+    providerId: "openai-compatible",
+    harnessId: "agentbench-basic-loop",
+    harnessVersion: "1",
+  } satisfies RunRecord);
+
+  render(
+    await RunDetailPage({
+      params: Promise.resolve({ id: "custom-run" }),
+    }),
+  );
+
+  expect(screen.getByText("custom-task · v2.4.0")).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "custom-agent", level: 1 }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/custom-model-v3.*high reasoning/i)).toBeInTheDocument();
+  expect(screen.getByText("openai-compatible")).toBeInTheDocument();
+  expect(screen.getByText("agentbench-basic-loop · v1")).toBeInTheDocument();
+  expect(screen.getByText("custom-benchmark · v2.4.0")).toBeInTheDocument();
+});
 
 test("renders primitive rationale and expected-versus-observed evidence", () => {
   render(

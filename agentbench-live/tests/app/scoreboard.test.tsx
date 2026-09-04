@@ -5,6 +5,13 @@ import { agents, listTasks } from "@/core/tasks/registry";
 import { RunCard } from "@/components/run-card";
 import { RunLauncher } from "@/components/run-launcher";
 import { Scoreboard } from "@/components/scoreboard";
+import Home from "@/app/page";
+
+const listRuns = vi.hoisted(() => vi.fn());
+
+vi.mock("@/server/container", () => ({
+  getServerContainer: () => ({ listRuns }),
+}));
 
 const completedRun: RunRecord = {
   id: "completed",
@@ -35,6 +42,33 @@ test("renders agents as rows and tasks as columns", () => {
     "href",
     "/runs/completed",
   );
+});
+
+test("adds persisted custom task and agent dimensions to the home scoreboard", () => {
+  listRuns.mockReturnValue([
+    {
+      ...completedRun,
+      id: "custom-score",
+      taskId: "custom-task",
+      agentId: "custom-agent",
+      model: "custom-model-v3",
+      providerId: "openai-compatible",
+      harnessId: "agentbench-basic-loop",
+      harnessVersion: "1",
+    } satisfies RunRecord,
+  ]);
+
+  render(<Home />);
+
+  expect(
+    screen.getByRole("columnheader", { name: "custom-task" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /custom-agent/i })).toHaveTextContent(
+    /custom-model-v3.*openai-compatible.*agentbench-basic-loop.*v1/i,
+  );
+  expect(
+    screen.getByRole("link", { name: /94.*passed/i }),
+  ).toHaveAttribute("href", "/runs/custom-score");
 });
 
 test("failed runs expose the failure and last successful stage", () => {
@@ -74,7 +108,10 @@ test("synthetic demo cards are unmistakably labeled as non-live proof", () => {
   ).toBeInTheDocument();
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  listRuns.mockReset();
+  vi.unstubAllGlobals();
+});
 
 test("starts a selected benchmark run through the API", async () => {
   const fetchMock = vi.fn(async () =>

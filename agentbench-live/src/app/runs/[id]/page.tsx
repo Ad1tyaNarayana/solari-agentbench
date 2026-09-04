@@ -4,7 +4,10 @@ import { EvidencePanel } from "@/components/evidence-panel";
 import { LiveRun } from "@/components/live-run";
 import { StageTimeline } from "@/components/stage-timeline";
 import { demoRuns } from "@/core/demo/seed";
-import { getAgent, getTask } from "@/core/tasks/registry";
+import {
+  agents as tutorialAgents,
+  legacyTasks as tutorialTasks,
+} from "@/core/tasks/registry";
 import { getServerContainer } from "@/server/container";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +21,13 @@ export default async function RunDetailPage({
   const run =
     getServerContainer().getRun(id) ?? demoRuns.find((candidate) => candidate.id === id);
   if (!run) notFound();
-  const task = getTask(run.taskId);
-  const agent = getAgent(run.agentId);
+  const tutorialTask = tutorialTasks.find((task) => task.id === run.taskId);
+  const tutorialAgent = tutorialAgents.find((agent) => agent.id === run.agentId);
+  const taskLabel = tutorialTask?.title ?? run.taskId;
+  const taskVersion = run.taskVersion ?? tutorialTask?.version ?? run.benchmarkVersion;
+  const agentLabel = tutorialAgent?.label ?? run.agentId;
+  const model = run.model ?? tutorialAgent?.model;
+  const reasoningEffort = run.reasoningEffort ?? tutorialAgent?.reasoningEffort;
   const scores = run.score ? Object.entries(run.score) : [];
 
   return (
@@ -31,9 +39,9 @@ export default async function RunDetailPage({
 
       <section className="run-hero">
         <div>
-          <p className="eyebrow">{task.title} · v{run.taskVersion}</p>
-          <h1>{agent.label}</h1>
-          <p>{run.model} · {run.reasoningEffort} reasoning</p>
+          <p className="eyebrow">{taskLabel}{taskVersion ? ` · v${taskVersion}` : ""}</p>
+          <h1>{agentLabel}</h1>
+          <p>{model ?? "Model not recorded"}{reasoningEffort ? ` · ${reasoningEffort} reasoning` : ""}</p>
         </div>
         <div className={`run-outcome run-outcome--${run.stage}`}>
           <span>{run.stage}</span>
@@ -75,7 +83,13 @@ export default async function RunDetailPage({
             <dl>
               <div><dt>Created</dt><dd>{new Date(run.createdAt).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}</dd></div>
               <div><dt>Duration</dt><dd>{run.durationMs ? `${(run.durationMs / 1000).toFixed(1)} s` : "In progress"}</dd></div>
-              <div><dt>Task version</dt><dd>{run.taskVersion}</dd></div>
+              <div><dt>Task ID</dt><dd>{run.taskId}</dd></div>
+              <div><dt>Task version</dt><dd>{taskVersion ?? "Not recorded"}</dd></div>
+              <div><dt>Agent ID</dt><dd>{run.agentId}</dd></div>
+              {run.benchmarkId ? <div><dt>Benchmark</dt><dd>{run.benchmarkId}{run.benchmarkVersion ? ` · v${run.benchmarkVersion}` : ""}</dd></div> : null}
+              {run.providerId ? <div><dt>Provider</dt><dd>{run.providerId}</dd></div> : null}
+              {run.harnessId ? <div><dt>Harness</dt><dd>{run.harnessId}{run.harnessVersion ? ` · v${run.harnessVersion}` : ""}</dd></div> : null}
+              {run.benchmarkDigest ? <div><dt>Snapshot digest</dt><dd>{run.benchmarkDigest}</dd></div> : null}
             </dl>
           </section>
         </aside>
