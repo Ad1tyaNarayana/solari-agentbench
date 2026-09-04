@@ -1,10 +1,16 @@
 import type { BrowserHandle, DesktopHandle, SandboxHandle, SolariServices } from "@/core/solari/contracts";
+import type { CleanupIssue } from "@/core/domain/run";
 import { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import type { EvaluatorFinalizerOutcome, EvaluatorFinalizerResult, EvaluatorResourcePort } from "./types";
 
 export class EvaluatorRuntime implements EvaluatorResourcePort {
   private readonly supervisor = new ResourceSupervisor();
   private readonly outputs = new Map<string, Readonly<Record<string, unknown>>>();
+  private readonly created = {
+    browsers: new Set<string>(),
+    sandboxes: new Set<string>(),
+    desktops: new Set<string>(),
+  };
   private readonly finalizers: Array<{
     evaluatorId: string;
     callback: () => Promise<EvaluatorFinalizerOutcome>;
@@ -15,16 +21,19 @@ export class EvaluatorRuntime implements EvaluatorResourcePort {
   async acquireSandbox(_label: string, options?: { timeoutMs?: number }): Promise<SandboxHandle> {
     const sandbox = await this.services.sandbox.create(options);
     this.supervisor.trackSandbox(sandbox);
+    this.created.sandboxes.add(sandbox.id);
     return sandbox;
   }
   async acquireBrowser(_label: string, options?: { recording?: boolean }): Promise<BrowserHandle> {
     const browser = await this.services.browser.create(options);
     this.supervisor.trackBrowser(browser);
+    this.created.browsers.add(browser.id);
     return browser;
   }
   async acquireDesktop(_label: string, options?: { timeoutMs?: number }): Promise<DesktopHandle> {
     const desktop = await this.services.desktop.create(options);
     this.supervisor.trackDesktop(desktop);
+    this.created.desktops.add(desktop.id);
     return desktop;
   }
   publishOutputs(evaluatorId: string, outputs: Record<string, unknown>): void {
@@ -44,7 +53,11 @@ export class EvaluatorRuntime implements EvaluatorResourcePort {
     this.finalizersPromise ??= this.performFinalizers();
     return this.finalizersPromise;
   }
-  async dispose(): Promise<void> { await this.supervisor.cleanup(); }
+  async dispose(): Promise<void> { await this.disposeWithAudit(); }
+  async disposeWithAudit(): Promise<EvaluationResourceAudit> {
+    const cleanupIssues = await this.supervisor.cleanup();
+    return this.audit(cleanupIssues);
+  }
 
   private async performFinalizers(): Promise<EvaluatorFinalizerResult[]> {
     const results: EvaluatorFinalizerResult[] = [];
@@ -64,4 +77,25 @@ export class EvaluatorRuntime implements EvaluatorResourcePort {
     }
     return results;
   }
+
+  private audit(cleanupIssues: CleanupIssue[]): EvaluationResourceAudit {
+    const sorted = (values: Set<string>) => [...values].sort();
+    return {
+      created: {
+        browsers: sorted(this.created.browsers),
+        sandboxes: sorted(this.created.sandboxes),
+        desktops: sorted(this.created.desktops),
+      },
+      cleanupIssues: [...cleanupIssues],
+    };
+  }
 }
+
+export type EvaluationResourceAudit = {
+  created: {
+    browsers: string[];
+    sandboxes: string[];
+    desktops: string[];
+  };
+  cleanupIssues: CleanupIssue[];
+};

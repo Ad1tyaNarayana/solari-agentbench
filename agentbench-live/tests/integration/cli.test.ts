@@ -158,3 +158,73 @@ test("demo:seed exports public artifacts without initializing execution", async 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("routes live and validate-only certification without conflating their outputs", async () => {
+  const output: string[] = [];
+  const runtime = {
+    matrixSummary: vi.fn(async () => "not used"),
+    runMatrix: vi.fn(async () => []),
+    dryRun: vi.fn(async () => { throw new Error("not used"); }),
+    runOne: vi.fn(async () => { throw new Error("not used"); }),
+    smoke: vi.fn(async () => { throw new Error("not used"); }),
+    validateCertification: vi.fn(async () => ({ valid: true, provisioned: false } as never)),
+    certify: vi.fn(async () => ({ solariLive: true } as never)),
+    writeLine: (line: string) => output.push(line),
+    dispose: vi.fn(async () => undefined),
+  } satisfies CliRuntime;
+
+  await runCli([
+    "certify",
+    "--benchmark-root", "examples/pack",
+    "--submission", "examples/submission",
+    "--validate-only",
+  ], runtime);
+  expect(runtime.validateCertification).toHaveBeenCalledWith({
+    benchmarkRoot: resolve("examples/pack"),
+    submissionDirectory: resolve("examples/submission"),
+    taskId: undefined,
+  });
+  expect(runtime.certify).not.toHaveBeenCalled();
+
+  await runCli([
+    "certify",
+    "--benchmark-root", "examples/pack",
+    "--submission", "examples/submission",
+    "--output", "examples/certificate.json",
+    "--task", "raft-safety",
+  ], runtime);
+  expect(runtime.certify).toHaveBeenCalledWith({
+    benchmarkRoot: resolve("examples/pack"),
+    submissionDirectory: resolve("examples/submission"),
+    outputPath: resolve("examples/certificate.json"),
+    taskId: "raft-safety",
+  });
+  expect(output.join("\n")).toMatch(/provisioned[\s\S]*solariLive/i);
+});
+
+test("requires output only for live certification", async () => {
+  const runtime = {
+    matrixSummary: vi.fn(async () => "not used"),
+    runMatrix: vi.fn(async () => []),
+    dryRun: vi.fn(async () => { throw new Error("not used"); }),
+    runOne: vi.fn(async () => { throw new Error("not used"); }),
+    smoke: vi.fn(async () => { throw new Error("not used"); }),
+    validateCertification: vi.fn(),
+    certify: vi.fn(),
+    writeLine: vi.fn(),
+    dispose: vi.fn(async () => undefined),
+  } satisfies CliRuntime;
+
+  await expect(runCli([
+    "certify",
+    "--benchmark-root", "examples/pack",
+    "--submission", "examples/submission",
+  ], runtime)).rejects.toThrow(/--output is required/i);
+  await expect(runCli([
+    "certify",
+    "--benchmark-root", "examples/pack",
+    "--submission", "examples/submission",
+    "--output", "certificate.json",
+    "--validate-only",
+  ], runtime)).rejects.toThrow(/--output.*validate-only/i);
+});

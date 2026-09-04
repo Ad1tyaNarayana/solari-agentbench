@@ -17,6 +17,7 @@ import type {
 } from "./contracts";
 
 const defaultBaseUrl = "https://api.getsolari.com";
+const liveServices = new WeakSet<SolariServices>();
 
 function missingCredential(): Error & { code: "missing_credential"; credential: "SOLARI_API_KEY" } {
   return Object.assign(new Error("SOLARI_API_KEY is required to provision Solari resources"), { code: "missing_credential" as const, credential: "SOLARI_API_KEY" as const });
@@ -273,10 +274,16 @@ export function createSolariServices(
   const browserClient = new Solari({ apiKey, baseUrl });
   const sandboxClient = new SandboxClient({ apiKey, baseUrl });
   const desktopClient = new DesktopClient({ apiKey, baseUrl });
-  return {
+  const services: SolariServices = {
     browser: new BrowserServiceAdapter(browserClient),
     sandbox: new SandboxServiceAdapter(sandboxClient),
     desktop: new DesktopServiceAdapter(desktopClient, sandboxClient),
     dispose: () => browserClient.close(),
   };
+  liveServices.add(services);
+  return services;
+}
+
+export function isLiveSolariServices(services: SolariServices): boolean {
+  return liveServices.has(services);
 }

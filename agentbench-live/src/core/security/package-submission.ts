@@ -128,7 +128,14 @@ export async function packageSubmission(
   workspace: Pick<DisposableWorkspace, "root">,
   policy: SubmissionPolicy,
 ): Promise<SubmissionPackage> {
-  const submissionRoot = resolve(workspace.root, "submission");
+  return packageSubmissionDirectory(resolve(workspace.root, "submission"), policy);
+}
+
+export async function packageSubmissionDirectory(
+  directory: string,
+  policy: SubmissionPolicy,
+): Promise<SubmissionPackage> {
+  const submissionRoot = resolve(directory);
   const canonicalRoot = await realpath(submissionRoot);
   const entries: Record<string, SubmissionEntry> = {};
 

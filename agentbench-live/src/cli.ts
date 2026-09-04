@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -33,6 +34,8 @@ import { VerifierRegistry } from "@/core/verifiers/registry";
 import { createAgentToolBroker } from "@/core/tools/broker";
 import { EvaluationEngine } from "@/core/evaluators/engine";
 import { createBuiltinEvaluatorRegistry } from "@/core/evaluators/builtins";
+import { CertificationService } from "@/core/certification/service";
+import type { CertificationInput, CertificationReport, CertificationValidation, CertificationWriteInput } from "@/core/certification/types";
 
 type CliMatrixOptions = { benchmarkId: string; concurrency: number };
 
@@ -42,6 +45,8 @@ export interface CliRuntime {
   matrixSummary(options: CliMatrixOptions): Promise<string>;
   runMatrix(options: CliMatrixOptions): Promise<RunRecord[]>;
   smoke(): Promise<SmokeReport | SmokePreflightFailure | unknown>;
+  validateCertification?(input: CertificationInput): Promise<CertificationValidation>;
+  certify?(input: CertificationWriteInput): Promise<CertificationReport>;
   writeLine(line: string): void;
   dispose(): Promise<void>;
 }
@@ -165,7 +170,29 @@ export async function runCli(
       activeRuntime.writeLine(JSON.stringify(records, null, 2));
       return;
     }
-    throw new Error("Usage: agentbench <dry-run|smoke|run|matrix|demo:seed> [options]");
+    if (parsed.command === "certify") {
+      const benchmarkRoot = resolve(required(parsed.values, "benchmark-root"));
+      const submissionDirectory = resolve(required(parsed.values, "submission"));
+      const taskValue = parsed.values.get("task");
+      const taskId = typeof taskValue === "string" ? taskValue : undefined;
+      if (parsed.values.has("validate-only")) {
+        if (parsed.values.has("output")) {
+          throw new Error("--output cannot be used with --validate-only");
+        }
+        if (!activeRuntime.validateCertification) {
+          throw new Error("Certification validation is unavailable in this runtime");
+        }
+        activeRuntime.writeLine(JSON.stringify(await activeRuntime.validateCertification({ benchmarkRoot, submissionDirectory, taskId }), null, 2));
+        return;
+      }
+      if (!activeRuntime.certify) {
+        throw new Error("Live certification is unavailable in this runtime");
+      }
+      const outputPath = resolve(required(parsed.values, "output"));
+      activeRuntime.writeLine(JSON.stringify(await activeRuntime.certify({ benchmarkRoot, submissionDirectory, outputPath, taskId }), null, 2));
+      return;
+    }
+    throw new Error("Usage: agentbench <dry-run|smoke|run|matrix|certify|demo:seed> [options]");
   } finally {
     await activeRuntime.dispose();
   }
@@ -180,12 +207,20 @@ export function createDefaultRuntime(): CliRuntime {
   const services = createSolariServices(solariApiKey);
   const credentials = createDefaultCredentialStore();
   const providers = createBuiltinProviderRegistry(credentials);
+  const snapshotRoot = resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH);
+  const loader = new BenchmarkLoader(snapshotRoot);
   const catalog = new BenchmarkCatalog(
     resolveBenchmarkRoots(process.env.AGENTBENCH_BENCHMARK_ROOTS),
-    new BenchmarkLoader(
-      resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH),
-    ),
+    loader,
   );
+  const evaluatorRegistry = createBuiltinEvaluatorRegistry(services);
+  const evaluator = new EvaluationEngine({
+    registry: evaluatorRegistry,
+    services,
+    providers,
+    credentials,
+    evidenceRoot: resolve(".agentbench/evidence"),
+  });
   const orchestrator = new AgentBenchOrchestrator({
     repository,
     events,
@@ -193,13 +228,7 @@ export function createDefaultRuntime(): CliRuntime {
     credentials,
     createToolBroker: (input) => createAgentToolBroker({ ...input, services }),
     verifier: new VerifierRegistry(services),
-    evaluator: new EvaluationEngine({
-      registry: createBuiltinEvaluatorRegistry(services),
-      services,
-      providers,
-      credentials,
-      evidenceRoot: resolve(".agentbench/evidence"),
-    }),
+    evaluator,
     resolveSelection: (request) => catalog.resolveSelection(request),
     preflight: async () => undefined,
     createWorkspace,
@@ -231,6 +260,20 @@ export function createDefaultRuntime(): CliRuntime {
       });
     },
     smoke: () => runSolariSmokePreflight(solariApiKey, services),
+    validateCertification: (input) => new CertificationService({
+      loader,
+      registry: evaluatorRegistry,
+      evaluator,
+      services,
+      repositoryCommit: resolveRepositoryCommit(),
+    }).validate(input),
+    certify: (input) => new CertificationService({
+      loader,
+      registry: evaluatorRegistry,
+      evaluator,
+      services,
+      repositoryCommit: resolveRepositoryCommit(),
+    }).certify(input),
     writeLine: (line) => console.log(line),
     async dispose() {
       try {
@@ -240,6 +283,17 @@ export function createDefaultRuntime(): CliRuntime {
       }
     },
   };
+}
+
+function resolveRepositoryCommit(): string {
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+    windowsHide: true,
+  }).trim();
+  if (!/^[a-f0-9]{40}$/i.test(commit)) {
+    throw new Error("Could not resolve a traceable repository commit");
+  }
+  return commit;
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

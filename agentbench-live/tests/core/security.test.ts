@@ -14,6 +14,7 @@ import { afterEach, expect, test } from "vitest";
 import {
   defaultSubmissionPolicy,
   packageSubmission,
+  packageSubmissionDirectory,
 } from "@/core/security/package-submission";
 import { redact } from "@/core/security/redact";
 import { createWorkspace } from "@/core/security/workspace";
@@ -497,6 +498,23 @@ test("hashes sorted submission paths and bytes", async () => {
       "results.json": { kind: "text", contents: "{}" },
     },
     digest: expected,
+  });
+});
+
+test("packages an explicit submission directory for certification", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentbench-explicit-submission-"));
+  fixtures.push(root);
+  const directory = join(root, "candidate");
+  await mkdir(directory);
+  await writeFile(join(directory, "results.json"), "{}");
+
+  const packaged = await packageSubmissionDirectory(
+    directory,
+    defaultSubmissionPolicy,
+  );
+
+  expect(packaged.entries).toEqual({
+    "results.json": { kind: "text", contents: "{}" },
   });
 });
 

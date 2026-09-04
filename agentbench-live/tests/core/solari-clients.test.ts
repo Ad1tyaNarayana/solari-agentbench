@@ -1,9 +1,25 @@
 import { expect, test, vi } from "vitest";
 import {
   BrowserServiceAdapter,
+  createSolariServices,
   DesktopServiceAdapter,
+  isLiveSolariServices,
   SandboxServiceAdapter,
 } from "@/core/solari/clients";
+
+test("brands only configured SDK service bundles as live Solari services", async () => {
+  const unavailable = createSolariServices("");
+  const configured = createSolariServices(
+    "slr_test_example",
+    "https://example.invalid",
+  );
+
+  expect(isLiveSolariServices(unavailable)).toBe(false);
+  expect(isLiveSolariServices(configured)).toBe(true);
+  expect(isLiveSolariServices({ browser: {}, sandbox: {}, desktop: {} } as never)).toBe(false);
+
+  await configured.dispose?.();
+});
 
 test("shuts down the browser SDK local proxy when services are disposed", async () => {
   const client = { close: vi.fn(async () => undefined) };
