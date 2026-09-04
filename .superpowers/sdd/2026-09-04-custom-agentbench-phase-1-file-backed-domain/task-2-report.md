@@ -112,4 +112,4 @@ GREEN: same command after implementation — 2 files passed, 16 tests passed.
 - `agentbench-live/tests/benchmarks/loader.test.ts`
 - `agentbench-live/tests/benchmarks/snapshot.test.ts`
 
-Fix implementation commit hash will be recorded after commit.
+Fix implementation commit: `46b97342d96b7a694728beb13267f6bef7575de5` (`fix(agentbench): make loader assets type-specific`).
