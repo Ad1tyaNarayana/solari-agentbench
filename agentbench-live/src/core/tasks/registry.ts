@@ -5,6 +5,9 @@ import { urlShortenerTask } from "./url-shortener";
 
 const tasks: TaskManifest[] = [urlShortenerTask, sameStatsTask];
 
+// Kept as the synchronous compatibility registry until the runner migration in Phase 1 Task 5.
+export const legacyTasks = tasks;
+
 export const agents = [
   {
     id: "sol-low",

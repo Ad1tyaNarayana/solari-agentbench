@@ -1,0 +1,19 @@
+schemaVersion: 1
+id: url-shortener
+name: URL Shortener
+prompt: prompt.md
+fixtures: []
+resources:
+  allowed: [browser, sandbox, desktop]
+  planningRequired: true
+  budget: { browserSessions: 1, sandboxes: 1, desktops: 1, totalMinutes: 5 }
+submission: { directory: submission, required: [source, results.json, methodology.md, provenance.json] }
+compatibility:
+  requiredEvidence: [sandbox, browser]
+  legacyVerifier: url-shortener
+  legacyBudgetMs: { totalMs: 300000, browserMs: 60000, sandboxMs: 180000, desktopMs: 60000 }
+evaluators:
+  - id: tutorial
+    type: command
+    weight: 100
+    config: { command: [true] }
