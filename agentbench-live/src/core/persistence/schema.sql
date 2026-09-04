@@ -19,8 +19,17 @@ CREATE TABLE IF NOT EXISTS runs (
   started_at TEXT,
   completed_at TEXT,
   duration_ms INTEGER,
-  cleanup_issues TEXT NOT NULL DEFAULT '[]'
+  cleanup_issues TEXT NOT NULL DEFAULT '[]',
+  benchmark_id TEXT,
+  benchmark_version TEXT,
+  benchmark_digest TEXT,
+  snapshot_path TEXT,
+  provider_id TEXT,
+  harness_id TEXT,
+  harness_version TEXT
 );
+
+PRAGMA user_version = 2;
 
 CREATE TABLE IF NOT EXISTS run_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

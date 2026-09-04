@@ -10,6 +10,7 @@ import type {
   RunRepository,
   RunUpdate,
 } from "./repository";
+import { migrateDatabase } from "./migrations";
 
 type RunRow = {
   id: string;
@@ -31,6 +32,13 @@ type RunRow = {
   completed_at: string | null;
   duration_ms: number | null;
   cleanup_issues: string;
+  benchmark_id: string | null;
+  benchmark_version: string | null;
+  benchmark_digest: string | null;
+  snapshot_path: string | null;
+  provider_id: string | null;
+  harness_id: string | null;
+  harness_version: string | null;
 };
 
 type EventRow = {
@@ -68,6 +76,13 @@ function fromRunRow(row: RunRow): RunRecord {
     cleanupIssues: JSON.parse(row.cleanup_issues) as NonNullable<
       RunRecord["cleanupIssues"]
     >,
+    benchmarkId: row.benchmark_id ?? undefined,
+    benchmarkVersion: row.benchmark_version ?? undefined,
+    benchmarkDigest: row.benchmark_digest ?? undefined,
+    snapshotPath: row.snapshot_path ?? undefined,
+    providerId: row.provider_id ?? undefined,
+    harnessId: row.harness_id ?? undefined,
+    harnessVersion: row.harness_version ?? undefined,
   };
 }
 
@@ -88,6 +103,8 @@ export class SqliteRunRepository implements RunRepository {
     this.database = new Database(path);
     this.database.pragma("busy_timeout = 5000");
     if (path !== ":memory:") this.database.pragma("journal_mode = WAL");
+    const hasRuns = Boolean(this.database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'").get());
+    if (hasRuns) migrateDatabase(this.database);
     this.database.exec(
       readFileSync(resolve("src/core/persistence/schema.sql"), "utf8"),
     );
@@ -104,6 +121,13 @@ export class SqliteRunRepository implements RunRepository {
       stage: "queued",
       sanitizedLogs: [],
       createdAt: new Date().toISOString(),
+      benchmarkId: input.benchmarkId,
+      benchmarkVersion: input.benchmarkVersion,
+      benchmarkDigest: input.benchmarkDigest,
+      snapshotPath: input.snapshotPath,
+      providerId: input.providerId,
+      harnessId: input.harnessId,
+      harnessVersion: input.harnessVersion,
     };
     this.insert(record);
     return record;
@@ -185,8 +209,9 @@ export class SqliteRunRepository implements RunRepository {
         id, task_id, task_version, agent_id, model, reasoning_effort, stage,
         last_successful_stage, run_plan, score, evidence, failure_code,
         failure_detail, sanitized_logs, created_at, started_at, completed_at,
-        duration_ms, cleanup_issues
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        duration_ms, cleanup_issues, benchmark_id, benchmark_version, benchmark_digest,
+        snapshot_path, provider_id, harness_id, harness_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         record.id,
         record.taskId,
@@ -207,6 +232,13 @@ export class SqliteRunRepository implements RunRepository {
         record.completedAt ?? null,
         record.durationMs ?? null,
         JSON.stringify(record.cleanupIssues ?? []),
+        record.benchmarkId ?? null,
+        record.benchmarkVersion ?? null,
+        record.benchmarkDigest ?? null,
+        record.snapshotPath ?? null,
+        record.providerId ?? null,
+        record.harnessId ?? null,
+        record.harnessVersion ?? null,
       );
   }
 
@@ -216,7 +248,8 @@ export class SqliteRunRepository implements RunRepository {
         task_version = ?, model = ?, reasoning_effort = ?, stage = ?,
         last_successful_stage = ?, run_plan = ?, score = ?, evidence = ?,
         failure_code = ?, failure_detail = ?, sanitized_logs = ?, started_at = ?,
-        completed_at = ?, duration_ms = ?, cleanup_issues = ?
+        completed_at = ?, duration_ms = ?, cleanup_issues = ?, benchmark_id = ?, benchmark_version = ?,
+        benchmark_digest = ?, snapshot_path = ?, provider_id = ?, harness_id = ?, harness_version = ?
       WHERE id = ?`)
       .run(
         record.taskVersion ?? null,
@@ -234,6 +267,13 @@ export class SqliteRunRepository implements RunRepository {
         record.completedAt ?? null,
         record.durationMs ?? null,
         JSON.stringify(record.cleanupIssues ?? []),
+        record.benchmarkId ?? null,
+        record.benchmarkVersion ?? null,
+        record.benchmarkDigest ?? null,
+        record.snapshotPath ?? null,
+        record.providerId ?? null,
+        record.harnessId ?? null,
+        record.harnessVersion ?? null,
         record.id,
       );
   }

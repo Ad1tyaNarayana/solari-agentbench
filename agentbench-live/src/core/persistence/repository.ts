@@ -7,6 +7,13 @@ export type CreateRunInput = {
   taskVersion?: string;
   model?: string;
   reasoningEffort?: "low" | "high";
+  benchmarkId?: string;
+  benchmarkVersion?: string;
+  benchmarkDigest?: string;
+  snapshotPath?: string;
+  providerId?: string;
+  harnessId?: string;
+  harnessVersion?: string;
 };
 
 export type RunUpdate = Partial<

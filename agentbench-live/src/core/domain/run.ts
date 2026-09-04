@@ -61,4 +61,11 @@ export type RunRecord = {
   durationMs?: number;
   cleanupIssues?: CleanupIssue[];
   provenance?: RunProvenance;
+  benchmarkId?: string;
+  benchmarkVersion?: string;
+  benchmarkDigest?: string;
+  snapshotPath?: string;
+  providerId?: string;
+  harnessId?: string;
+  harnessVersion?: string;
 };
