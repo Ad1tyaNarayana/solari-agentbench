@@ -39,8 +39,7 @@ defaults:
       join(root, "agents.yaml"),
       `schemaVersion: 1
 agents:
-  - schemaVersion: 1
-    id: agent
+  - id: agent
     name: Agent
     provider: test
     harness: { id: test, version: '1' }

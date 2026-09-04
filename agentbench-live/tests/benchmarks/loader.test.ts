@@ -33,13 +33,11 @@ describe("BenchmarkLoader path safety", () => {
     const fixture = await createPack();
     const agentsYaml = `schemaVersion: 1
 agents:
-  - schemaVersion: 1
-    id: ä
+  - id: ä
     name: Umlaut Agent
     provider: test
     harness: { id: test, version: '1' }
-  - schemaVersion: 1
-    id: z
+  - id: z
     name: Z Agent
     provider: test
     harness: { id: test, version: '1' }

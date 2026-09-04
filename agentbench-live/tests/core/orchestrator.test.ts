@@ -90,7 +90,7 @@ function createHarness(options: {
   taskBudgetMs?: number;
   generationResourceViolation?: boolean;
   generationInventoryError?: boolean;
-  lateProvisionMs?: number;
+  lateProvision?: () => Promise<{ kill(): Promise<void> }>;
   lateGenerationResourceMs?: number;
   cleanupGraceMs?: number;
   afterDispose?: () => void;
@@ -113,7 +113,6 @@ function createHarness(options: {
   };
   const observedVerificationStages: string[] = [];
   const generationCleanup: string[] = [];
-  let lateProvisionKills = 0;
   let lateGenerationResourceAvailable = false;
   const planner: PlannerPort & { calls: unknown[] } = {
     calls: [],
@@ -176,22 +175,11 @@ function createHarness(options: {
     async verify(input) {
       this.calls.push(input);
       operationOrder.push("verification");
-      if (options.lateProvisionMs !== undefined) {
+      if (options.lateProvision) {
         input.onStage("provisioning");
         await input.acquireWithDeadline(
           "late sandbox provisioning",
-          () =>
-            new Promise<{ kill(): Promise<void> }>((resolveHandle) => {
-              setTimeout(
-                () =>
-                  resolveHandle({
-                    async kill() {
-                      lateProvisionKills += 1;
-                    },
-                  }),
-                options.lateProvisionMs,
-              );
-            }),
+          options.lateProvision,
           (handle) => handle.kill(),
         );
       }
@@ -326,9 +314,6 @@ function createHarness(options: {
     generationCleanup,
     get workspaceCalls() {
       return workspaceCalls;
-    },
-    get lateProvisionKills() {
-      return lateProvisionKills;
     },
     get sandboxLists() {
       return sandboxLists;
@@ -622,23 +607,68 @@ test("enforces the total deadline even when a planner ignores its process timeou
 });
 
 test("awaits cleanup of a provisioning handle that resolves after the run deadline", async () => {
+  vi.useFakeTimers();
+  let signalProvisioningStarted!: () => void;
+  const provisioningStarted = new Promise<void>((resolve) => {
+    signalProvisioningStarted = resolve;
+  });
+  let resolveProvisioningHandle!: (
+    handle: { kill(): Promise<void> },
+  ) => void;
+  const provisioningHandle = new Promise<{ kill(): Promise<void> }>(
+    (resolve) => {
+      resolveProvisioningHandle = resolve;
+    },
+  );
+  let lateProvisionKills = 0;
+  const lateHandle = {
+    async kill() {
+      lateProvisionKills += 1;
+    },
+  };
   const harness = createHarness({
     taskBudgetMs: 20,
-    lateProvisionMs: 30,
     cleanupGraceMs: 100,
+    lateProvision: () => {
+      signalProvisioningStarted();
+      return provisioningHandle;
+    },
   });
 
-  const run = await harness.orchestrator.run({
+  const runPromise = harness.orchestrator.run({
     taskId: "url-shortener",
     agentId: "sol-low",
   });
+  let runSettled = false;
+  void runPromise.then(
+    () => {
+      runSettled = true;
+    },
+    () => {
+      runSettled = true;
+    },
+  );
 
-  expect(run).toMatchObject({
-    stage: "failed",
-    failureCode: "agent_timeout",
-  });
-  expect(harness.lateProvisionKills).toBe(1);
-  harness.repository.close();
+  try {
+    await provisioningStarted;
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(runSettled).toBe(false);
+
+    resolveProvisioningHandle(lateHandle);
+    const run = await runPromise;
+
+    expect(run).toMatchObject({
+      stage: "failed",
+      failureCode: "agent_timeout",
+    });
+    expect(lateProvisionKills).toBe(1);
+  } finally {
+    resolveProvisioningHandle(lateHandle);
+    await runPromise;
+    harness.repository.close();
+    vi.useRealTimers();
+  }
 });
 
 test("uses cleanup grace for inventory and teardown after generation exceeds the deadline", async () => {
