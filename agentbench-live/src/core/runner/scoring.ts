@@ -15,6 +15,23 @@ export type ScoreBreakdown = {
   total: number;
 };
 
+import type { EvaluationReport, EvaluatorResult } from "@/core/evaluators/types";
+
+export function scoreEvaluation(
+  results: EvaluatorResult[],
+  expectedResultCount: number,
+): Omit<EvaluationReport, "results"> {
+  const possiblePoints = results.reduce((sum, item) => sum + item.possiblePoints, 0);
+  const valid = results.length === expectedResultCount && possiblePoints === 100 &&
+    results.every((item) => item.status !== "error");
+  const earned = results.reduce((sum, item) => sum + item.earnedPoints, 0);
+  return {
+    status: valid ? "valid-score" : "invalid-score",
+    score: valid ? Math.round(earned * 100) / 100 : null,
+    possiblePoints: 100,
+  };
+}
+
 function category(value: number, maximum: number): number {
   return Math.min(maximum, Math.max(0, value));
 }
