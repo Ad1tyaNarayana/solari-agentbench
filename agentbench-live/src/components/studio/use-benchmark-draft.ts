@@ -7,4 +7,4 @@ export const initialDraft: BenchmarkDraft = { schemaVersion: 1, id: "my-benchmar
 type State = { draft: BenchmarkDraft; dirty: boolean; revision?: Record<string, string>; snapshotDigest?: string };
 type Action = { type: "replace"; draft: BenchmarkDraft; revision?: Record<string, string>; snapshotDigest?: string } | { type: "edit"; draft: BenchmarkDraft };
 function reducer(state: State, action: Action): State { return action.type === "replace" ? { draft: action.draft, revision: action.revision, snapshotDigest: action.snapshotDigest, dirty: false } : { ...state, draft: action.draft, dirty: true }; }
-export function useBenchmarkDraft() { return useReducer(reducer, { draft: initialDraft, dirty: true }); }
+export function useBenchmarkDraft(seed: BenchmarkDraft = initialDraft) { return useReducer(reducer, { draft: seed, dirty: true }); }
