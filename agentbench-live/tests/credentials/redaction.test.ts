@@ -240,13 +240,13 @@ test("redacts an Error name inherited from its provider-defined prototype", asyn
   expect(String(rejection)).not.toContain(secret);
 });
 
-test("redacts unregistered separator-obfuscated assignments from detached errors", () => {
+test("redacts arbitrary punctuation assignments from detached errors", () => {
   const failure = Object.assign(
-    new Error("request failed A.p-I__K_eY=unregistered-provider-secret", {
-      cause: new Error("upstream j_W.t = 'unregistered-jwt-secret'"),
+    new Error("request failed a/p/i/k/e/y=unregistered-provider-secret", {
+      cause: new Error("upstream j+W\\t = 'unregistered-jwt-secret'"),
     }),
     {
-      detail: '"AcCeSs---To_Ken": "unregistered-access-secret"',
+      detail: '"AcCeSs!To@Ken": "unregistered-access-secret"',
     },
   );
 
@@ -256,9 +256,9 @@ test("redacts unregistered separator-obfuscated assignments from detached errors
   };
 
   expect(rejection).not.toBe(failure);
-  expect(rejection.message).toBe("request failed A.p-I__K_eY=[REDACTED]");
-  expect(rejection.cause.message).toBe("upstream j_W.t = '[REDACTED]'");
-  expect(rejection.detail).toBe('"AcCeSs---To_Ken": "[REDACTED]"');
+  expect(rejection.message).toBe("request failed a/p/i/k/e/y=[REDACTED]");
+  expect(rejection.cause.message).toBe("upstream j+W\\t = '[REDACTED]'");
+  expect(rejection.detail).toBe('"AcCeSs!To@Ken": "[REDACTED]"');
   expect(collectErrorText(rejection)).not.toMatch(
     /unregistered-provider-secret|unregistered-jwt-secret|unregistered-access-secret/,
   );

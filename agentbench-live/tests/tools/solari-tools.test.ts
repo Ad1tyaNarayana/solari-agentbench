@@ -207,14 +207,14 @@ describe("Solari tool policy and lifecycle", () => {
     }
   });
 
-  it("redacts unregistered separator-obfuscated assignments from broker rejection causes", async () => {
+  it("redacts arbitrary punctuation assignments from broker rejection causes", async () => {
     const { broker, sandbox, supervisor } = brokerFor(["sandbox"]);
     const failure = Object.assign(
-      new Error("provider A.p-I__K_eY=unregistered-provider-secret", {
-        cause: new Error("upstream j_W.t = 'unregistered-jwt-secret'"),
+      new Error("provider a/p/i/k/e/y=unregistered-provider-secret", {
+        cause: new Error("upstream j+W\\t = 'unregistered-jwt-secret'"),
       }),
       {
-        detail: '"AcCeSs---To_Ken": "unregistered-access-secret"',
+        detail: '"AcCeSs!To@Ken": "unregistered-access-secret"',
       },
     );
     sandbox.exec = vi.fn(async () => {
@@ -236,11 +236,11 @@ describe("Solari tool policy and lifecycle", () => {
       expect(rejection.cause).toBeInstanceOf(Error);
       expect(rejection.cause).not.toBe(failure);
       expect((rejection.cause as Error).message).toBe(
-        "provider A.p-I__K_eY=[REDACTED]",
+        "provider a/p/i/k/e/y=[REDACTED]",
       );
       const loggable = collectLoggableErrorText(rejection);
-      expect(loggable).toContain("j_W.t = '[REDACTED]'");
-      expect(loggable).toContain('"AcCeSs---To_Ken": "[REDACTED]"');
+      expect(loggable).toContain("j+W\\t = '[REDACTED]'");
+      expect(loggable).toContain('"AcCeSs!To@Ken": "[REDACTED]"');
       expect(loggable).not.toMatch(
         /unregistered-provider-secret|unregistered-jwt-secret|unregistered-access-secret/,
       );

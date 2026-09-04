@@ -73,15 +73,42 @@ function isAsciiAlphanumeric(character: string | undefined): boolean {
   );
 }
 
-function isUnquotedAssignmentKeyCharacter(
+function isAssignmentContainerBoundary(
   character: string | undefined,
 ): boolean {
   return (
-    isAsciiAlphanumeric(character) ||
-    character === "." ||
-    character === "_" ||
-    character === "-"
+    character === "{" ||
+    character === "}" ||
+    character === "[" ||
+    character === "]" ||
+    character === "(" ||
+    character === ")" ||
+    character === "<" ||
+    character === ">" ||
+    character === "," ||
+    character === ";" ||
+    character === "&"
   );
+}
+
+function isAssignmentKeyCharacter(
+  character: string | undefined,
+  matchingQuote?: '"' | "'",
+): boolean {
+  if (isAsciiAlphanumeric(character)) return true;
+  if (
+    character === undefined ||
+    character === ":" ||
+    character === "=" ||
+    isAssignmentContainerBoundary(character)
+  ) {
+    return false;
+  }
+  if (character === '"' || character === "'") {
+    return matchingQuote !== undefined && character !== matchingQuote;
+  }
+  // Every other character is a separator removed by key canonicalization.
+  return true;
 }
 
 function assignmentKeyBefore(
@@ -99,20 +126,34 @@ function assignmentKeyBefore(
       0,
       contentEnd - CREDENTIAL_ASSIGNMENT_KEY_MAX_LENGTH - 1,
     );
-    for (let cursor = contentEnd - 1; cursor >= minimumIndex; cursor -= 1) {
+    let cursor = contentEnd - 1;
+    while (cursor >= minimumIndex) {
       const character = value[cursor];
       if (character === quote) {
-        const candidate = value.slice(cursor + 1, contentEnd);
-        return candidate.length > 0
-          ? { value: candidate, quoted: true }
-          : undefined;
+        let escapeStart = cursor;
+        while (
+          escapeStart > minimumIndex &&
+          value[escapeStart - 1] === "\\"
+        ) {
+          escapeStart -= 1;
+        }
+        if (
+          escapeStart === minimumIndex &&
+          value[escapeStart - 1] === "\\"
+        ) {
+          return undefined;
+        }
+        if ((cursor - escapeStart) % 2 === 0) {
+          const candidate = value.slice(cursor + 1, contentEnd);
+          return candidate.length > 0
+            ? { value: candidate, quoted: true }
+            : undefined;
+        }
+        cursor = escapeStart - 1;
+        continue;
       }
-      if (
-        !isUnquotedAssignmentKeyCharacter(character) &&
-        !isWhitespace(character)
-      ) {
-        return undefined;
-      }
+      if (!isAssignmentKeyCharacter(character, quote)) return undefined;
+      cursor -= 1;
     }
     return undefined;
   }
@@ -122,7 +163,7 @@ function assignmentKeyBefore(
   while (
     keyStart > 0 &&
     remaining > 0 &&
-    isUnquotedAssignmentKeyCharacter(value[keyStart - 1])
+    isAssignmentKeyCharacter(value[keyStart - 1])
   ) {
     keyStart -= 1;
     remaining -= 1;

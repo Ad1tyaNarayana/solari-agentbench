@@ -65,6 +65,64 @@ test("redacts separator-obfuscated credential assignments without changing safe 
   );
 });
 
+test("redacts punctuation and control separated assignments at every text position", () => {
+  const input = [
+    "a/p/i/k/e/y=start-slash-secret",
+    "ordinary!setting=visible",
+    "c+$r^e*|d~e`n\\t?%i@a#l = 'middle-punctuation-secret'",
+    '"s!e@c#r$e%t": "quoted-json-secret"',
+    "t\u0001o\u0002k\u0003e\u0004n=end-control-secret",
+  ].join("; ");
+
+  expect(redact(input)).toBe(
+    [
+      "a/p/i/k/e/y=[REDACTED]",
+      "ordinary!setting=visible",
+      "c+$r^e*|d~e`n\\t?%i@a#l = '[REDACTED]'",
+      '"s!e@c#r$e%t": "[REDACTED]"',
+      "t\u0001o\u0002k\u0003e\u0004n=[REDACTED]",
+    ].join("; "),
+  );
+});
+
+test("uses quotes and container punctuation as assignment-key boundaries", () => {
+  const credentialJson =
+    '{"a/p/i/k/e/y":"json-secret","a/p/i/k/e/\\"/y":"escaped-quote-secret","ordinary/key":"visible","input_tokens":20}';
+  const ordinaryText = [
+    "api/key, ordinary=value",
+    "[api/key] another=value",
+    "(api/key) final=value",
+    "ordinary prose 1/2 = fraction",
+  ].join("; ");
+
+  const redactedJson = redact(credentialJson);
+  expect(redactedJson).toBe(
+    '{"a/p/i/k/e/y":"[REDACTED]","a/p/i/k/e/\\"/y":"[REDACTED]","ordinary/key":"visible","input_tokens":20}',
+  );
+  expect(JSON.parse(redactedJson)).toEqual({
+    "a/p/i/k/e/y": "[REDACTED]",
+    'a/p/i/k/e/"/y': "[REDACTED]",
+    "ordinary/key": "visible",
+    input_tokens: 20,
+  });
+  expect(redact(ordinaryText)).toBe(ordinaryText);
+});
+
+test("bounds punctuation-heavy assignment keys to 128 characters", () => {
+  const atLimit = `a/p/i/k/e/y${"!".repeat(117)}`;
+  const beyondLimit = `a/p/i/k/e/y${"!".repeat(118)}`;
+  const quotedAssignments = `{"${atLimit}":"quoted-secret","${beyondLimit}":"visible"}`;
+
+  expect(atLimit).toHaveLength(128);
+  expect(beyondLimit).toHaveLength(129);
+  expect(redact(`${atLimit}=bounded-secret; ${beyondLimit}=visible`)).toBe(
+    `${atLimit}=[REDACTED]; ${beyondLimit}=visible`,
+  );
+  expect(redact(quotedAssignments)).toBe(
+    `{"${atLimit}":"[REDACTED]","${beyondLimit}":"visible"}`,
+  );
+});
+
 test("rejects dotenv files", async () => {
   const workspace = await fixtureWorkspace({
     "submission/results.json": "{}",
