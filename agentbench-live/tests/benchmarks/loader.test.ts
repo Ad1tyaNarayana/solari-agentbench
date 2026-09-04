@@ -79,6 +79,69 @@ describe("BenchmarkLoader path safety", () => {
     await expect(readFile(join(loaded.snapshot.root, "tasks/task/expected.json"), "utf8")).resolves.toBe("{}");
   });
 
+  it("loads and snapshots a schema evaluator config.schema asset", async () => {
+    const fixture = await createPack();
+    await mkdir(join(fixture.root, "tasks/task/evaluators"));
+    await writeFile(join(fixture.root, "tasks/task/evaluators/result.schema.json"), '{"type":"object"}');
+    const task = fixture.taskYaml
+      .replace("type: file", "type: schema")
+      .replace("config: { subject: result.txt }", "config: { schema: evaluators/result.schema.json }");
+    await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
+
+    const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
+
+    expect(loaded.definition.tasks[0]?.evaluators[0]?.config.schema).toBe("evaluators/result.schema.json");
+    await expect(readFile(join(loaded.snapshot.root, "tasks/task/evaluators/result.schema.json"), "utf8"))
+      .resolves.toBe('{"type":"object"}');
+  });
+
+  it("loads and snapshots a model-judge evaluator config.rubric asset", async () => {
+    const fixture = await createPack();
+    await mkdir(join(fixture.root, "tasks/task/rubrics"));
+    await writeFile(join(fixture.root, "tasks/task/rubrics/quality.md"), "Award points for correctness.");
+    const task = fixture.taskYaml
+      .replace("type: file", "type: model-judge")
+      .replace("config: { subject: result.txt }", "config: { rubric: rubrics/quality.md }");
+    await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
+
+    const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
+
+    expect(loaded.definition.tasks[0]?.evaluators[0]?.config.rubric).toBe("rubrics/quality.md");
+    await expect(readFile(join(loaded.snapshot.root, "tasks/task/rubrics/quality.md"), "utf8"))
+      .resolves.toBe("Award points for correctness.");
+  });
+
+  it("loads and snapshots a command evaluator config.script asset", async () => {
+    const fixture = await createPack();
+    await mkdir(join(fixture.root, "tasks/task/evaluators"));
+    await writeFile(join(fixture.root, "tasks/task/evaluators/verify.py"), "print('verified')");
+    const task = fixture.taskYaml
+      .replace("type: file", "type: command")
+      .replace("config: { subject: result.txt }", "config: { script: evaluators/verify.py }");
+    await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
+
+    const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
+
+    expect(loaded.definition.tasks[0]?.evaluators[0]?.config.script).toBe("evaluators/verify.py");
+    await expect(readFile(join(loaded.snapshot.root, "tasks/task/evaluators/verify.py"), "utf8"))
+      .resolves.toBe("print('verified')");
+  });
+
+  it("loads and snapshots a command evaluator config.fixture asset", async () => {
+    const fixture = await createPack();
+    await writeFile(join(fixture.root, "tasks/task/fixtures/expected.json"), '{"status":"ok"}');
+    const task = fixture.taskYaml
+      .replace("type: file", "type: command")
+      .replace("config: { subject: result.txt }", "config: { fixture: fixtures/expected.json }");
+    await writeFile(join(fixture.root, "tasks/task/task.yaml"), task);
+
+    const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
+
+    expect(loaded.definition.tasks[0]?.evaluators[0]?.config.fixture).toBe("fixtures/expected.json");
+    await expect(readFile(join(loaded.snapshot.root, "tasks/task/fixtures/expected.json"), "utf8"))
+      .resolves.toBe('{"status":"ok"}');
+  });
+
   it("does not treat asset-looking keys on unrelated evaluator types as files", async () => {
     const fixture = await createPack();
     const task = fixture.taskYaml.replace("type: file", "type: numeric").replace("config: { subject: result.txt }", "config: { script: missing.py }");
