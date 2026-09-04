@@ -14,8 +14,10 @@ import {
   AgentToolError,
   COMMAND_OUTPUT_MAX_BYTES,
   COMMAND_TIMEOUT_MAX_MS,
+  OBSERVATION_MAX_BYTES,
   SCREENSHOT_BASE64_MAX_BYTES,
   SCREENSHOT_MAX_BYTES,
+  TOOL_RESULT_ENVELOPE_MAX_BYTES,
   solariToolContracts,
 } from "./types";
 
@@ -76,13 +78,17 @@ function screenshotEvidence(bytes: Uint8Array, toolName: string) {
       toolName,
     });
   }
-  const dataBase64 = Buffer.from(bytes).toString("base64");
+  const evidence = sanitizeProviderOutput({
+    mediaType: "image/png" as const,
+    dataBase64: Buffer.from(bytes).toString("base64"),
+  });
+  const dataBase64 = evidence.dataBase64;
   if (Buffer.byteLength(dataBase64, "utf8") > SCREENSHOT_BASE64_MAX_BYTES) {
     throw new AgentToolError("output_limit", "Screenshot exceeds encoded byte limit", {
       toolName,
     });
   }
-  return { mediaType: "image/png" as const, dataBase64 };
+  return evidence;
 }
 
 async function abortable<T>(
@@ -209,15 +215,22 @@ export class SolariTools {
     operation: string,
     observation: Record<string, unknown> = {},
   ): Promise<void> {
-    await this.#sink.emit(
-      "resource-observation",
-      sanitizeProviderOutput({
-        primitive,
-        handle,
-        operation,
-        ...observation,
-      }),
-    );
+    const payload = sanitizeProviderOutput({
+      primitive,
+      handle,
+      operation,
+      ...observation,
+    });
+    const maximum =
+      operation === "screenshot"
+        ? SCREENSHOT_BASE64_MAX_BYTES + TOOL_RESULT_ENVELOPE_MAX_BYTES
+        : OBSERVATION_MAX_BYTES;
+    if (Buffer.byteLength(JSON.stringify(payload), "utf8") > maximum) {
+      throw new AgentToolError("output_limit", "Observation exceeds byte limit", {
+        toolName: `${primitive}_${operation}`,
+      });
+    }
+    await this.#sink.emit("resource-observation", payload);
   }
 
   async #trackResource(

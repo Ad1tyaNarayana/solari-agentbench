@@ -14,7 +14,11 @@ const sensitiveUrlParameters = new Set([
   "authorization",
   "credential",
   "expires",
+  "id_token",
+  "jwt",
   "key",
+  "client_secret",
+  "refresh_token",
   "session_token",
   "sig",
   "signature",
@@ -22,6 +26,18 @@ const sensitiveUrlParameters = new Set([
   "x-amz-credential",
   "x-amz-signature",
 ]);
+
+function isSensitiveUrlParameter(key: string): boolean {
+  const normalized = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+  return (
+    sensitiveUrlParameters.has(normalized) ||
+    /(?:^|[_-])(?:auth|credential|jwt|secret|signature|sig|token)(?:$|[_-])/.test(
+      normalized,
+    )
+  );
+}
 
 function redactCredentialUrls(value: string): string {
   return value.replace(/https?:\/\/[^\s"'<>\[\]{},]+/gi, (candidate) => {
@@ -36,7 +52,7 @@ function redactCredentialUrls(value: string): string {
     }
     if (
       [...parsed.searchParams.keys()].some((key) =>
-        sensitiveUrlParameters.has(key.toLowerCase()),
+        isSensitiveUrlParameter(key),
       )
     ) {
       return "[REDACTED_SIGNED_URL]";
@@ -47,7 +63,7 @@ function redactCredentialUrls(value: string): string {
 
 function redactCredentialAssignments(value: string): string {
   return value.replace(
-    /((?:["']?(?:api[_-]?key|authorization|credential|secret|session[_-]?token|signature|sig|token)["']?)\s*[:=]\s*)(["']?)([^\s"',;&}\]]+)\2/gi,
+    /((?:["']?(?:api[_-]?key|authorization|credential|secret|session[_-]?token|signature|sig|token)["']?)\s*[:=]\s*)(["']?)(?!\[REDACTED\])([^\s"',;&}\]]+)\2/gi,
     (_match, prefix: string, quote: string) =>
       `${prefix}${quote}[REDACTED]${quote}`,
   );
@@ -55,7 +71,7 @@ function redactCredentialAssignments(value: string): string {
 
 export function redact(value: string, context: RedactionContext = {}): string {
   let sanitized = redactCredentialAssignments(redactCredentialUrls(value))
-    .replace(/\bBearer\s+[^\s"'},\]]+/gi, "Bearer [REDACTED]")
+    .replace(/\bBearer\s+(?!\[REDACTED\])[^\s"'},\]]+/gi, "Bearer [REDACTED]")
     .replace(/\bslr_(?:live|test)_[A-Za-z0-9_-]+\b/g, "[REDACTED_SOLARI_KEY]");
 
   for (const root of context.localRoots ?? []) {

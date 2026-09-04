@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { registerCredentialValue } from "@/core/credentials/redaction";
 import type { RunPlan } from "@/core/domain/plan";
 import type { AgentEventKind, AgentEventSink } from "@/core/providers/events";
 import type {
@@ -10,6 +11,29 @@ import type {
 } from "@/core/solari/contracts";
 import { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import { createAgentToolBroker } from "@/core/tools/broker";
+import { AgentToolError } from "@/core/tools/types";
+
+function collectLoggableErrorText(value: unknown): string {
+  const strings: string[] = [];
+  const seen = new WeakSet<object>();
+  const visit = (item: unknown) => {
+    if (typeof item === "string") {
+      strings.push(item);
+      return;
+    }
+    if (item === null || typeof item !== "object" || seen.has(item)) return;
+    seen.add(item);
+    if (item instanceof Error) {
+      strings.push(item.name, item.message, item.stack ?? "");
+    }
+    for (const key of Reflect.ownKeys(item)) {
+      const descriptor = Object.getOwnPropertyDescriptor(item, key);
+      if (descriptor !== undefined && "value" in descriptor) visit(descriptor.value);
+    }
+  };
+  visit(value);
+  return strings.join("\n");
+}
 
 function fakeSolari() {
   const page: BrowserPageHandle = {
@@ -107,6 +131,82 @@ function brokerFor(primitives: RunPlan["primitives"]) {
 }
 
 describe("Solari tool policy and lifecycle", () => {
+  it("turns create and operation provider rejections into recursively sanitized typed errors", async () => {
+    const exactSecret = "exact-provider-api-key";
+    const failure = (label: string) => {
+      const nested = Object.assign(
+        new TypeError(`${label} nested ${exactSecret}`),
+        {
+          name: `${label}-Bearer bearer-provider-secret`,
+          payload: {
+            token: "raw-token-field",
+            message: "token=assigned-provider-secret",
+            url: "https://errors.example.test/failure?JWT=jwt-provider-secret",
+          },
+        },
+      );
+      return Object.assign(
+        new AggregateError(
+          [nested, `aggregate child ${exactSecret}`],
+          `${label} aggregate ${exactSecret}`,
+          { cause: new Error(`cause Bearer cause-provider-secret`) },
+        ),
+        { detail: { authorization: "nested-authorization-secret" } },
+      );
+    };
+    const fake = fakeSolari();
+    fake.services.browser.create = vi.fn(async () => {
+      throw failure("create");
+    });
+    fake.sandbox.exec = vi.fn(async () => {
+      throw failure("operation");
+    });
+    const supervisor = new ResourceSupervisor();
+    const broker = createAgentToolBroker({
+      workspace: { root: process.cwd(), dispose: async () => undefined },
+      plan: {
+        primitives: ["browser", "sandbox"],
+        reason: { browser: "inspect", sandbox: "execute" },
+        verificationStrategy: "inspect safe failures",
+      },
+      services: fake.services,
+      supervisor,
+      sink: { emit: async () => undefined, close: () => undefined },
+      remainingMs: () => 60_000,
+      environment: {},
+    });
+    const release = registerCredentialValue(exactSecret);
+    try {
+      const createRejection = await broker
+        .invoke("browser_create", {}, new AbortController().signal)
+        .catch((error: unknown) => error);
+      expect(createRejection).toBeInstanceOf(AgentToolError);
+      expect(createRejection).toMatchObject({ code: "execution_failed" });
+
+      await broker.invoke("sandbox_create", {}, new AbortController().signal);
+      const operationRejection = await broker
+        .invoke(
+          "sandbox_exec",
+          { handle: "s-1", command: "node", args: [] },
+          new AbortController().signal,
+        )
+        .catch((error: unknown) => error);
+      expect(operationRejection).toBeInstanceOf(AgentToolError);
+      expect(operationRejection).toMatchObject({ code: "execution_failed" });
+
+      const loggable = [createRejection, operationRejection]
+        .map(collectLoggableErrorText)
+        .join("\n");
+      expect(loggable).toContain("[REDACTED]");
+      expect(loggable).not.toMatch(
+        /exact-provider-api-key|bearer-provider-secret|raw-token-field|assigned-provider-secret|jwt-provider-secret|cause-provider-secret|nested-authorization-secret/i,
+      );
+    } finally {
+      release();
+      await supervisor.cleanup();
+    }
+  });
+
   it("requires the planned primitive on every creation and subsequent operation", async () => {
     const { broker, services } = brokerFor(["sandbox"]);
     const signal = new AbortController().signal;
@@ -333,6 +433,53 @@ describe("Solari tool policy and lifecycle", () => {
     }
   });
 
+  it("rejects browser text and screenshot payloads that expand past caps during redaction", async () => {
+    const fixture = brokerFor(["browser"]);
+    const signal = new AbortController().signal;
+    fixture.page.textContent = vi.fn(
+      async () => "qq".repeat(512 * 1024 - 1),
+    );
+    fixture.page.screenshot = vi.fn(
+      async () => new Uint8Array(5 * 1024 * 1024 - 2),
+    );
+    try {
+      await fixture.broker.invoke("browser_create", {}, signal);
+
+      const releaseText = registerCredentialValue("qq");
+      try {
+        await expect(
+          fixture.broker.invoke(
+            "browser_text",
+            { handle: "b-1", selector: "main" },
+            signal,
+          ),
+        ).rejects.toMatchObject({ code: "output_limit" });
+      } finally {
+        releaseText();
+      }
+
+      const releaseScreenshot = registerCredentialValue("AAAA");
+      try {
+        await expect(
+          fixture.broker.invoke("browser_screenshot", { handle: "b-1" }, signal),
+        ).rejects.toMatchObject({ code: "output_limit" });
+      } finally {
+        releaseScreenshot();
+      }
+      expect(
+        fixture.events.filter(
+          ({ kind, payload }) =>
+            kind === "resource-observation" &&
+            typeof payload === "object" &&
+            payload !== null &&
+            (payload as { operation?: unknown }).operation === "screenshot",
+        ),
+      ).toEqual([]);
+    } finally {
+      await fixture.supervisor.cleanup();
+    }
+  });
+
   it("registers a created resource before later event publication can fail", async () => {
     const { services, sandbox } = fakeSolari();
     const supervisor = new ResourceSupervisor();
@@ -356,9 +503,14 @@ describe("Solari tool policy and lifecycle", () => {
     });
 
     try {
-      await expect(
-        broker.invoke("sandbox_create", {}, new AbortController().signal),
-      ).rejects.toThrow("event persistence failed");
+      const rejection = await broker
+        .invoke("sandbox_create", {}, new AbortController().signal)
+        .catch((error: unknown) => error);
+      expect(rejection).toBeInstanceOf(AgentToolError);
+      expect(rejection).toMatchObject({
+        code: "execution_failed",
+        cause: expect.objectContaining({ message: "event persistence failed" }),
+      });
     } finally {
       await supervisor.cleanup();
     }

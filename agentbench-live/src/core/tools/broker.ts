@@ -1,4 +1,8 @@
 import type { RunPlan } from "@/core/domain/plan";
+import {
+  redactCredentialError,
+  redactCredentialOutput,
+} from "@/core/credentials/redaction";
 import type { AgentEventSink } from "@/core/providers/events";
 import type {
   AgentToolBroker,
@@ -11,8 +15,12 @@ import { SolariTools } from "./solari-tools";
 import {
   AgentToolError,
   allToolContracts,
+  COMMAND_OUTPUT_MAX_BYTES,
   type IsolatedWorkspaceCommandRunner,
   parseToolArguments,
+  SCREENSHOT_BASE64_MAX_BYTES,
+  TOOL_RESULT_ENVELOPE_MAX_BYTES,
+  WORKSPACE_LIST_MAX_BYTES,
   workspaceToolContracts,
 } from "./types";
 import { WorkspaceTools } from "./workspace-tools";
@@ -35,6 +43,70 @@ const contractsByName = new Map(
 const workspaceNames = new Set(
   workspaceToolContracts.map((tool) => tool.definition.name),
 );
+const executionNames = new Set(["workspace_exec", "sandbox_exec", "desktop_exec"]);
+const screenshotNames = new Set(["browser_screenshot", "desktop_screenshot"]);
+
+function serializedBytes(value: unknown, toolName: string): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch (error) {
+    throw new AgentToolError("execution_failed", "Tool result is not serializable", {
+      toolName,
+      cause: error,
+    });
+  }
+}
+
+function sanitizedBoundedResult(name: string, value: unknown): unknown {
+  const sanitized = redactCredentialOutput(value);
+  let payloadLimit = COMMAND_OUTPUT_MAX_BYTES + TOOL_RESULT_ENVELOPE_MAX_BYTES;
+
+  if (name === "workspace_list") {
+    payloadLimit = WORKSPACE_LIST_MAX_BYTES;
+  } else if (screenshotNames.has(name)) {
+    payloadLimit = SCREENSHOT_BASE64_MAX_BYTES + TOOL_RESULT_ENVELOPE_MAX_BYTES;
+    const dataBase64 = (sanitized as { dataBase64?: unknown })?.dataBase64;
+    if (
+      typeof dataBase64 !== "string" ||
+      Buffer.byteLength(dataBase64, "utf8") > SCREENSHOT_BASE64_MAX_BYTES
+    ) {
+      throw new AgentToolError("output_limit", "Screenshot exceeds encoded byte limit", {
+        toolName: name,
+      });
+    }
+  } else if (executionNames.has(name)) {
+    const result = sanitized as { stdout?: unknown; stderr?: unknown };
+    if (
+      typeof result.stdout !== "string" ||
+      typeof result.stderr !== "string" ||
+      Buffer.byteLength(result.stdout, "utf8") +
+        Buffer.byteLength(result.stderr, "utf8") >
+        COMMAND_OUTPUT_MAX_BYTES
+    ) {
+      throw new AgentToolError("output_limit", "Command output exceeds byte limit", {
+        toolName: name,
+      });
+    }
+  } else if (name === "browser_text" || name === "workspace_read") {
+    const field = name === "browser_text" ? "text" : "content";
+    const text = (sanitized as Record<string, unknown>)?.[field];
+    if (
+      typeof text === "string" &&
+      Buffer.byteLength(text, "utf8") > COMMAND_OUTPUT_MAX_BYTES
+    ) {
+      throw new AgentToolError("output_limit", "Tool text exceeds byte limit", {
+        toolName: name,
+      });
+    }
+  }
+
+  if (serializedBytes(sanitized, name) > payloadLimit) {
+    throw new AgentToolError("output_limit", "Tool result exceeds serialized byte limit", {
+      toolName: name,
+    });
+  }
+  return sanitized;
+}
 
 function copyDefinition(definition: AgentToolDefinition): AgentToolDefinition {
   return {
@@ -89,18 +161,33 @@ export class PolicyBoundAgentToolBroker implements AgentToolBroker {
     argumentsValue: unknown,
     signal: AbortSignal,
   ): Promise<unknown> {
-    const contract = contractsByName.get(name);
-    if (contract === undefined) {
-      throw new AgentToolError("unknown_tool", `Unknown agent tool: ${name}`, {
+    try {
+      const contract = contractsByName.get(name);
+      if (contract === undefined) {
+        throw new AgentToolError("unknown_tool", `Unknown agent tool: ${name}`, {
+          toolName: name,
+        });
+      }
+      signal.throwIfAborted();
+      const parsed = parseToolArguments(contract, argumentsValue);
+      if (workspaceNames.has(name)) {
+        return sanitizedBoundedResult(
+          name,
+          await this.#workspace.invoke(name, parsed, signal),
+        );
+      }
+      return sanitizedBoundedResult(
+        name,
+        await this.#solari.invoke(name, parsed, signal),
+      );
+    } catch (error) {
+      const sanitized = redactCredentialError(error);
+      if (sanitized instanceof AgentToolError) throw sanitized;
+      throw new AgentToolError("execution_failed", "Agent tool invocation failed", {
         toolName: name,
+        cause: sanitized,
       });
     }
-    signal.throwIfAborted();
-    const parsed = parseToolArguments(contract, argumentsValue);
-    if (workspaceNames.has(name)) {
-      return this.#workspace.invoke(name, parsed, signal);
-    }
-    return this.#solari.invoke(name, parsed, signal);
   }
 }
 

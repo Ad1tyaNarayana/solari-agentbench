@@ -2,6 +2,7 @@ import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { registerCredentialValue } from "@/core/credentials/redaction";
 import type { RunPlan } from "@/core/domain/plan";
 import type { AgentEventSink } from "@/core/providers/events";
 import type { SolariServices } from "@/core/solari/contracts";
@@ -367,6 +368,59 @@ describe("workspace tools", () => {
       timedOut: true,
       outputTruncated: true,
     });
+  });
+
+  it("rejects isolated command output that exceeds its cap only after credential redaction", async () => {
+    const shortSecret = "qq";
+    const { broker } = await fixtureBroker({
+      commandRunner: {
+        async run() {
+          return {
+            exitCode: 0,
+            stdout: shortSecret.repeat(512 * 1024 - 1),
+            stderr: "",
+            timedOut: false,
+            outputTruncated: false,
+          };
+        },
+      },
+    });
+    const release = registerCredentialValue(shortSecret);
+    try {
+      await expect(
+        broker.invoke(
+          "workspace_exec",
+          { command: "isolated-command", args: [] },
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ code: "output_limit" });
+    } finally {
+      release();
+    }
+  });
+
+  it("rejects a listing whose final redacted JSON exceeds the aggregate cap", async () => {
+    const shortSecret = "qq";
+    const { root, broker } = await fixtureBroker();
+    await Promise.all(
+      Array.from({ length: 200 }, (_, index) =>
+        writeFile(
+          join(
+            root,
+            `${shortSecret.repeat(100)}-${String(index).padStart(3, "0")}.txt`,
+          ),
+          "",
+        ),
+      ),
+    );
+    const release = registerCredentialValue(shortSecret);
+    try {
+      await expect(
+        broker.invoke("workspace_list", {}, new AbortController().signal),
+      ).rejects.toMatchObject({ code: "output_limit" });
+    } finally {
+      release();
+    }
   });
 
   it("serializes concurrent tool requests around workspace mutation", async () => {

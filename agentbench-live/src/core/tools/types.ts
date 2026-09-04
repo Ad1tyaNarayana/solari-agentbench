@@ -9,6 +9,8 @@ export const COMMAND_OUTPUT_MAX_BYTES = 1024 * 1024;
 export const COMMAND_TIMEOUT_MAX_MS = 120_000;
 export const SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
 export const SCREENSHOT_BASE64_MAX_BYTES = Math.ceil(SCREENSHOT_MAX_BYTES / 3) * 4;
+export const TOOL_RESULT_ENVELOPE_MAX_BYTES = 1024;
+export const OBSERVATION_MAX_BYTES = 64 * 1024;
 
 export type AgentToolErrorCode =
   | "unknown_tool"

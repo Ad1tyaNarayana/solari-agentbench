@@ -67,6 +67,25 @@ test("redacts nested token fields, credential assignments, and signed URLs on an
   );
 });
 
+test("redacts JWT and common auth query parameters case-insensitively on any host", () => {
+  const output = redactCredentialOutput({
+    jwt: "https://identity.example.test/callback?JWT=jwt-secret",
+    refresh: "https://identity.example.test/callback?refresh_token=refresh-secret",
+    client: "https://identity.example.test/callback?client_secret=client-secret",
+    camel: "https://identity.example.test/callback?accessToken=camel-secret",
+  });
+
+  expect(output).toEqual({
+    jwt: "[REDACTED_SIGNED_URL]",
+    refresh: "[REDACTED_SIGNED_URL]",
+    client: "[REDACTED_SIGNED_URL]",
+    camel: "[REDACTED_SIGNED_URL]",
+  });
+  expect(JSON.stringify(output)).not.toMatch(
+    /jwt-secret|refresh-secret|client-secret|camel-secret/,
+  );
+});
+
 test("keeps identical active values registered until every scope releases", async () => {
   const store = environmentStore({ first: "shared-secret", second: "shared-secret" });
 
@@ -156,6 +175,27 @@ test("redacts non-enumerable and cyclic error state while preserving error shape
     token: "[REDACTED]",
   });
   expect(detail.self).toBe(detail);
+});
+
+test("redacts an Error name inherited from its provider-defined prototype", async () => {
+  const secret = "prototype-name-secret";
+  const store = environmentStore({ api: secret });
+  class ProviderError extends Error {}
+  Object.defineProperty(ProviderError.prototype, "name", {
+    value: `Provider-${secret}`,
+    configurable: true,
+  });
+  const failure = new ProviderError("provider failed");
+
+  const rejection = await store
+    .withCredential("api", async () => {
+      throw failure;
+    })
+    .catch((error: unknown) => error);
+
+  expect(rejection).toBe(failure);
+  expect((rejection as Error).name).toBe("Provider-[REDACTED]");
+  expect(String(rejection)).not.toContain(secret);
 });
 
 test("returns an immutable snapshot for persistence and publication boundaries", async () => {
