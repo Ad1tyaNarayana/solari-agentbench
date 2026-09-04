@@ -251,7 +251,14 @@ export function parseCodexRunPlan(response: string, task: PlanTask): RunPlan {
       "codex",
     );
   }
-  const parsed = RunPlanSchema.safeParse(decoded);
+  return validateCodexRunPlan(decoded, task);
+}
+
+export function validateCodexRunPlan(
+  plan: unknown,
+  task: PlanTask,
+): RunPlan {
+  const parsed = RunPlanSchema.safeParse(plan);
   if (!parsed.success) {
     throw new ProviderPlanInvalidError(
       `Codex produced an invalid run plan: ${parsed.error.message}`,
@@ -426,6 +433,7 @@ export class CodexSdkProvider
     signal: AbortSignal,
   ): Promise<ProviderExecution> {
     signal.throwIfAborted();
+    const plan = validateCodexRunPlan(input.plan, input.task);
     const handle: ProviderRunHandle = { id: this.#createHandleId() };
     if (this.#activeExecutions.has(handle.id)) {
       throw new AgentFailedError("Codex execution handle collision", "codex");
@@ -439,7 +447,7 @@ export class CodexSdkProvider
       config: {
         mcp_servers: {
           solari: solariMcpServerDefinition(
-            input.plan.primitives,
+            plan.primitives,
             this.#solariGuardPath,
           ),
         },

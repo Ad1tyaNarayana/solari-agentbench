@@ -330,6 +330,64 @@ describe("CodexSdkProvider planning", () => {
 });
 
 describe("CodexSdkProvider execution", () => {
+  it("rejects a structurally invalid direct execution plan before SDK or resource activity", async () => {
+    const sdk = fakeSdk();
+    const provider = new CodexSdkProvider({
+      createCodex: sdk.createCodex,
+      environment: () => ({ PATH: "test-path" }),
+    });
+    const { sink, events } = recordingSink();
+    const input = executionInput();
+    const invoke = vi.fn(async () => undefined);
+    input.tools = {
+      listDefinitions: () => [],
+      invoke,
+    };
+    input.plan = {
+      primitives: ["sandbox", "sandbox"],
+      reason: { sandbox: "duplicate structural input" },
+      verificationStrategy: "run checks",
+    };
+
+    await expect(
+      provider.execute(input, sink, new AbortController().signal),
+    ).rejects.toEqual(expect.objectContaining({ code: "plan_invalid" }));
+    expect(sdk.createOptions).toHaveLength(0);
+    expect(sdk.threadOptions).toHaveLength(0);
+    expect(sdk.executions).toHaveLength(0);
+    expect(events).toHaveLength(0);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("rejects a task-disallowed direct execution primitive before SDK or resource activity", async () => {
+    const sdk = fakeSdk();
+    const provider = new CodexSdkProvider({
+      createCodex: sdk.createCodex,
+      environment: () => ({ PATH: "test-path" }),
+    });
+    const { sink, events } = recordingSink();
+    const input = executionInput();
+    const invoke = vi.fn(async () => undefined);
+    input.tools = {
+      listDefinitions: () => [],
+      invoke,
+    };
+    input.plan = {
+      primitives: ["desktop"],
+      reason: { desktop: "use a forbidden desktop" },
+      verificationStrategy: "capture a screenshot",
+    };
+
+    await expect(
+      provider.execute(input, sink, new AbortController().signal),
+    ).rejects.toEqual(expect.objectContaining({ code: "plan_invalid" }));
+    expect(sdk.createOptions).toHaveLength(0);
+    expect(sdk.threadOptions).toHaveLength(0);
+    expect(sdk.executions).toHaveLength(0);
+    expect(events).toHaveLength(0);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("streams the exact snapshotted prompt through the approved Solari config and normalizes events in order", async () => {
     const sdk = fakeSdk({ events: eventFixture() });
     const provider = new CodexSdkProvider({
