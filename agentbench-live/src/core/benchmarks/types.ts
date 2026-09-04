@@ -40,6 +40,11 @@ export type BenchmarkDefinition = {
   tasks: BenchmarkTaskDefinition[]; agents: AgentDefinition[];
 };
 
+export type BenchmarkFileManifest = {
+  schemaVersion: 1; id: string; name: string; version: string; description?: string;
+  taskRoots: string[]; defaults: BenchmarkDefinition["defaults"];
+};
+
 export type BenchmarkDiagnostic = { path: string; code: string; message: string };
 
 export class BenchmarkValidationError extends Error {

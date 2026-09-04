@@ -1,35 +1,42 @@
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { Primitive } from "@/core/domain/plan";
-import type { AgentDefinition, BenchmarkDefinition, BenchmarkDiagnostic, BenchmarkTaskDefinition, EvaluatorDefinition } from "./types";
+import type { AgentDefinition, BenchmarkDefinition, BenchmarkDiagnostic, BenchmarkFileManifest, BenchmarkTaskDefinition, EvaluatorDefinition } from "./types";
 import { BenchmarkValidationError } from "./types";
 
 const primitives = z.enum(["browser", "sandbox", "desktop"]);
 const evaluatorTypes = z.enum(["file", "schema", "command", "http", "browser", "numeric", "model-judge"]);
 const unknownRecord = z.record(z.string(), z.unknown());
+const safePath = z.string().trim().min(1).refine((value) => {
+  const normalized = value.replaceAll("\\", "/");
+  return !normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized) && !normalized.split("/").includes("..");
+}, "path must be a safe relative path");
 const evaluator = z.object({
   id: z.string().min(1), type: evaluatorTypes, weight: z.number().min(0), enabled: z.boolean().default(true),
   prerequisites: z.array(z.string()).default([]), config: unknownRecord.default({}),
 }).strict();
 const task = z.object({
-  schemaVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), prompt: z.string().trim().min(1),
-  fixtures: z.array(z.string()),
+  schemaVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), prompt: safePath,
+  fixtures: z.array(safePath),
   resources: z.object({ allowed: z.array(primitives), planningRequired: z.boolean(), budget: z.object({
     browserSessions: z.number().int().min(0), sandboxes: z.number().int().min(0), desktops: z.number().int().min(0), totalMinutes: z.number().int().min(0),
   }).strict() }).strict(),
-  submission: z.object({ directory: z.string().min(1), required: z.array(z.string()) }).strict(),
+  submission: z.object({ directory: safePath, required: z.array(safePath) }).strict(),
   compatibility: z.object({ requiredEvidence: z.array(primitives), legacyVerifier: z.string(), legacyBudgetMs: z.object({ totalMs: z.number().int().min(0), browserMs: z.number().int().min(0), sandboxMs: z.number().int().min(0), desktopMs: z.number().int().min(0) }).strict() }).strict().optional(),
   evaluators: z.array(evaluator).min(1),
 }).strict();
 const agent = z.object({ schemaVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), provider: z.string().min(1), model: z.string().optional(), reasoningEffort: z.string().optional(), credential: z.string().optional(), harness: z.object({ id: z.string().min(1), version: z.string().min(1) }).strict(), options: unknownRecord.default({}) }).strict();
-const agentsFile = z.object({ schemaVersion: z.literal(1), agents: z.array(agent) }).strict();
-const benchmark = z.object({ schemaVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), version: z.string().min(1), description: z.string().optional(), root: z.string().min(1), defaults: z.object({ timeoutSeconds: z.number().int().min(0), maxConcurrency: z.number().int().min(1), submissionDirectory: z.string().min(1) }).strict(), tasks: z.array(task), agents: z.array(agent) }).strict();
+export const TaskFileSchema = task;
+export const AgentsFileSchema = z.object({ schemaVersion: z.literal(1), agents: z.array(agent) }).strict();
+export const BenchmarkFileSchema = z.object({ schemaVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), version: z.string().min(1), description: z.string().optional(), taskRoots: z.array(safePath).min(1), defaults: z.object({ timeoutSeconds: z.number().int().min(0), maxConcurrency: z.number().int().min(1), submissionDirectory: safePath }).strict() }).strict();
 
 function diagnostics(error: z.ZodError): BenchmarkDiagnostic[] {
   return error.issues.map((i) => ({ path: i.path.join(".") || "$", code: i.code, message: i.message }));
 }
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
-  const result = schema.safeParse(typeof input === "string" ? parseYaml(input) : input);
+  let value: unknown = input;
+  try { value = typeof input === "string" ? parseYaml(input) : input; } catch (error) { throw new BenchmarkValidationError([{ path: "$", code: "yaml_parse", message: error instanceof Error ? error.message : "invalid YAML" }]); }
+  const result = schema.safeParse(value);
   if (!result.success) throw new BenchmarkValidationError(diagnostics(result.error));
   return result.data;
 }
@@ -52,6 +59,6 @@ function taskResult(raw: z.infer<typeof task>): BenchmarkTaskDefinition {
   return { id: raw.id, name: raw.name, promptPath: raw.prompt, prompt: raw.prompt, fixtures: raw.fixtures, allowedPrimitives: raw.resources.allowed as Primitive[], planningRequired: raw.resources.planningRequired, resourceLimits: raw.resources.budget, submission: raw.submission, compatibility: raw.compatibility, evaluators: raw.evaluators as EvaluatorDefinition[] };
 }
 export function parseTaskFile(input: unknown): BenchmarkTaskDefinition { return taskResult(parse(task, input)); }
-export function parseAgentsFile(input: unknown): AgentDefinition[] { const value = parse(agentsFile, input); const ids = value.agents.map((a) => a.id); if (new Set(ids).size !== ids.length) throw new BenchmarkValidationError([{ path: "agents", code: "duplicate_id", message: "agent IDs must be unique" }]); return value.agents as AgentDefinition[]; }
-export function parseBenchmarkFile(input: unknown): BenchmarkDefinition { const value = parse(benchmark, input); const ids = value.tasks.map((t) => t.id); if (new Set(ids).size !== ids.length) throw new BenchmarkValidationError([{ path: "tasks", code: "duplicate_id", message: "task IDs must be unique" }]); const agentIds = value.agents.map((a) => a.id); if (new Set(agentIds).size !== agentIds.length) throw new BenchmarkValidationError([{ path: "agents", code: "duplicate_id", message: "agent IDs must be unique" }]); return { ...value, tasks: value.tasks.map(taskResult) } as BenchmarkDefinition; }
+export function parseAgentsFile(input: unknown): AgentDefinition[] { const value = parse(AgentsFileSchema, input); const ids = value.agents.map((a) => a.id); if (new Set(ids).size !== ids.length) throw new BenchmarkValidationError([{ path: "agents", code: "duplicate_id", message: "agent IDs must be unique" }]); return value.agents as AgentDefinition[]; }
+export function parseBenchmarkFile(input: unknown): BenchmarkFileManifest { return parse(BenchmarkFileSchema, input); }
 export { BenchmarkValidationError } from "./types";
