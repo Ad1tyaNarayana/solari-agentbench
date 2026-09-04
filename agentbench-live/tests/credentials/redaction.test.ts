@@ -264,6 +264,55 @@ test("redacts arbitrary punctuation assignments from detached errors", () => {
   );
 });
 
+test("bounded assignment lexer sanitizes a detached frozen AggregateError graph", () => {
+  const cause = Object.freeze(
+    new Error(`cause 's:e:c:r:e:t' = 'unregistered-cause-secret'`),
+  );
+  const nested = Object.freeze(
+    new TypeError(
+      'nested "a[p]i{k}e y": "unregistered-nested-secret"',
+    ),
+  );
+  const failure = new AggregateError(
+    [nested, 'child "j=w=t" = "unregistered-child-secret"'],
+    'aggregate "a,p,i,k,e,y": "unregistered-aggregate-secret"',
+    { cause },
+  );
+  Object.defineProperty(failure, "detail", {
+    enumerable: true,
+    value: Object.freeze({
+      note: 'detail "access[token]": "unregistered-detail-secret"',
+    }),
+  });
+  Object.freeze(failure.errors);
+  Object.freeze(failure);
+
+  const rejection = redactCredentialError(failure) as AggregateError & {
+    cause: Error;
+    detail: { note: string };
+  };
+
+  expect(rejection).not.toBe(failure);
+  expect(rejection).toBeInstanceOf(AggregateError);
+  expect(rejection.message).toBe(
+    'aggregate "a,p,i,k,e,y": "[REDACTED]"',
+  );
+  expect(rejection.cause).not.toBe(cause);
+  expect(rejection.cause.message).toBe(
+    `cause 's:e:c:r:e:t' = '[REDACTED]'`,
+  );
+  expect((rejection.errors[0] as Error).message).toBe(
+    'nested "a[p]i{k}e y": "[REDACTED]"',
+  );
+  expect(rejection.errors[1]).toBe('child "j=w=t" = "[REDACTED]"');
+  expect(rejection.detail.note).toBe(
+    'detail "access[token]": "[REDACTED]"',
+  );
+  expect(collectErrorText(rejection)).not.toMatch(
+    /unregistered-(?:cause|nested|child|aggregate|detail)-secret/,
+  );
+});
+
 test("returns an immutable snapshot for persistence and publication boundaries", async () => {
   const store = environmentStore({ api: "snapshot-secret" });
 

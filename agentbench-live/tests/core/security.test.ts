@@ -20,6 +20,61 @@ import { createWorkspace } from "@/core/security/workspace";
 
 const fixtures: string[] = [];
 
+const printableAsciiPunctuation = [
+  ["exclamation mark", "!"],
+  ["double quote", '"'],
+  ["number sign", "#"],
+  ["dollar sign", "$"],
+  ["percent sign", "%"],
+  ["ampersand", "&"],
+  ["single quote", "'"],
+  ["left parenthesis", "("],
+  ["right parenthesis", ")"],
+  ["asterisk", "*"],
+  ["plus sign", "+"],
+  ["comma", ","],
+  ["hyphen-minus", "-"],
+  ["full stop", "."],
+  ["slash", "/"],
+  ["colon", ":"],
+  ["semicolon", ";"],
+  ["less-than sign", "<"],
+  ["equals sign", "="],
+  ["greater-than sign", ">"],
+  ["question mark", "?"],
+  ["commercial at", "@"],
+  ["left square bracket", "["],
+  ["backslash", "\\"],
+  ["right square bracket", "]"],
+  ["circumflex accent", "^"],
+  ["low line", "_"],
+  ["grave accent", "`"],
+  ["left curly bracket", "{"],
+  ["vertical line", "|"],
+  ["right curly bracket", "}"],
+  ["tilde", "~"],
+] as const;
+
+const unquotedCredentialKeySeparators = [
+  ["exclamation mark", "!"],
+  ["number sign", "#"],
+  ["dollar sign", "$"],
+  ["percent sign", "%"],
+  ["asterisk", "*"],
+  ["plus sign", "+"],
+  ["hyphen-minus", "-"],
+  ["full stop", "."],
+  ["slash", "/"],
+  ["question mark", "?"],
+  ["commercial at", "@"],
+  ["backslash", "\\"],
+  ["circumflex accent", "^"],
+  ["low line", "_"],
+  ["grave accent", "`"],
+  ["vertical line", "|"],
+  ["tilde", "~"],
+] as const;
+
 async function fixtureWorkspace(files: Record<string, string | Uint8Array>) {
   const root = await mkdtemp(join(tmpdir(), "agentbench-fixture-"));
   fixtures.push(root);
@@ -83,6 +138,117 @@ test("redacts punctuation and control separated assignments at every text positi
       "t\u0001o\u0002k\u0003e\u0004n=[REDACTED]",
     ].join("; "),
   );
+});
+
+test.each(printableAsciiPunctuation)(
+  "bounded assignment lexer accepts the ASCII %s inside a quoted key",
+  (_name, separator) => {
+    const key = [..."token"].join(separator);
+    const input = JSON.stringify({ [key]: "printable-punctuation-secret" });
+    const output = redact(input);
+
+    expect(output).toBe(JSON.stringify({ [key]: "[REDACTED]" }));
+    expect(JSON.parse(output)).toEqual({ [key]: "[REDACTED]" });
+  },
+);
+
+test.each(unquotedCredentialKeySeparators)(
+  "bounded assignment lexer accepts the ASCII %s inside an unquoted key",
+  (_name, separator) => {
+    const key = [..."apikey"].join(separator);
+
+    expect(redact(`${key}=unquoted-punctuation-secret`)).toBe(
+      `${key}=[REDACTED]`,
+    );
+  },
+);
+
+test("bounded assignment lexer preserves structural boundaries and controls", () => {
+  const input = [
+    "token=start-secret",
+    "(token=parenthesized-secret)",
+    "[token=bracketed-secret]",
+    "{token=braced-secret}",
+    "<token=angled-secret>",
+    "ordinary=visible,token=comma-secret",
+    "ordinary=visible;token=semicolon-secret",
+    "ordinary=visible&token=ampersand-secret",
+    "ordinary=visible\ntoken=newline-secret",
+    "t\u0001o\u0002k\u0003e\u0004n=control-secret",
+  ].join(" | ");
+
+  expect(redact(input)).toBe(
+    [
+      "token=[REDACTED]",
+      "(token=[REDACTED])",
+      "[token=[REDACTED]]",
+      "{token=[REDACTED]}",
+      "<token=[REDACTED]>",
+      "ordinary=visible,token=[REDACTED]",
+      "ordinary=visible;token=[REDACTED]",
+      "ordinary=visible&token=[REDACTED]",
+      "ordinary=visible\ntoken=[REDACTED]",
+      "t\u0001o\u0002k\u0003e\u0004n=[REDACTED]",
+    ].join(" | "),
+  );
+});
+
+test("bounded assignment lexer preserves values, JSON, and assignment syntax", () => {
+  const json = JSON.stringify({
+    "a,p,i,k,e,y": "comma-secret",
+    "prefix/s:e[c]{r}=e t": "escaped \\\"quote\\\", comma, equals=secret",
+    input_tokens: 20,
+    output_tokens: false,
+    token_count: null,
+    ordinary: "token=embedded-secret",
+  });
+  const expectedJson = JSON.stringify({
+    "a,p,i,k,e,y": "[REDACTED]",
+    "prefix/s:e[c]{r}=e t": "[REDACTED]",
+    input_tokens: 20,
+    output_tokens: false,
+    token_count: null,
+    ordinary: "token=[REDACTED]",
+  });
+  const assignments = String.raw`'a\'p\'i\'k\'e\'y' = 'single \' quote'; jwt="double \" quote"; token=unquoted; credential=[REDACTED]`;
+
+  const redactedJson = redact(json);
+  expect(redactedJson).toBe(expectedJson);
+  expect(JSON.parse(redactedJson)).toEqual(JSON.parse(expectedJson));
+  expect(redact(assignments)).toBe(
+    String.raw`'a\'p\'i\'k\'e\'y' = '[REDACTED]'; jwt="[REDACTED]"; token=[REDACTED]; credential=[REDACTED]`,
+  );
+});
+
+test.each([
+  [127, "[REDACTED]"],
+  [128, "[REDACTED]"],
+  [129, "visible"],
+] as const)(
+  "bounded assignment lexer enforces a %i-character key limit",
+  (length, expectedValue) => {
+    const key = `token${"!".repeat(length - "token".length)}`;
+    const quoted = JSON.stringify({ [key]: "visible" });
+
+    expect(key).toHaveLength(length);
+    expect(redact(`${key}=visible`)).toBe(`${key}=${expectedValue}`);
+    expect(redact(quoted)).toBe(JSON.stringify({ [key]: expectedValue }));
+  },
+);
+
+test("bounded assignment lexer does not swallow prose, prior values, or containers", () => {
+  const ordinaryText = [
+    "The token is discussed before ordinary=value",
+    "A secret appears in prose before setting=visible",
+    "api/key, ordinary=value",
+    "[api/key] another=value",
+    "(api/key) final=value",
+    "ordinary prose 1/2 = fraction",
+    "ordinary_key=visible",
+    "endpoint=https://example.test/path?mode=view",
+  ].join("; ");
+
+  expect(redact(ordinaryText)).toBe(ordinaryText);
 });
 
 test("uses quotes and container punctuation as assignment-key boundaries", () => {

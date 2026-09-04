@@ -57,20 +57,11 @@ type AssignmentValueRange = {
 type AssignmentKey = {
   value: string;
   quoted: boolean;
+  delimiterIndex: number;
 };
 
 function isWhitespace(character: string | undefined): boolean {
   return character !== undefined && whitespace.test(character);
-}
-
-function isAsciiAlphanumeric(character: string | undefined): boolean {
-  if (character === undefined) return false;
-  const code = character.charCodeAt(0);
-  return (
-    (code >= 48 && code <= 57) ||
-    (code >= 65 && code <= 90) ||
-    (code >= 97 && code <= 122)
-  );
 }
 
 function isAssignmentContainerBoundary(
@@ -91,86 +82,101 @@ function isAssignmentContainerBoundary(
   );
 }
 
-function isAssignmentKeyCharacter(
+function assignmentDelimiterAfter(
+  value: string,
+  keyEnd: number,
+): number | undefined {
+  let cursor = keyEnd;
+  while (cursor < value.length && isWhitespace(value[cursor])) cursor += 1;
+  return value[cursor] === ":" || value[cursor] === "="
+    ? cursor
+    : undefined;
+}
+
+function quotedAssignmentKeyAt(
+  value: string,
+  keyStart: number,
+): AssignmentKey | undefined {
+  const quote = value[keyStart];
+  if (quote !== '"' && quote !== "'") return undefined;
+
+  const contentStart = keyStart + 1;
+  let cursor = contentStart;
+  let escaped = false;
+  while (
+    cursor < value.length &&
+    cursor - contentStart <= CREDENTIAL_ASSIGNMENT_KEY_MAX_LENGTH
+  ) {
+    const character = value[cursor];
+    if (escaped) {
+      escaped = false;
+      cursor += 1;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      cursor += 1;
+      continue;
+    }
+    if (character === quote) {
+      if (cursor === contentStart) return undefined;
+      const delimiterIndex = assignmentDelimiterAfter(value, cursor + 1);
+      return delimiterIndex === undefined
+        ? undefined
+        : {
+            value: value.slice(contentStart, cursor),
+            quoted: true,
+            delimiterIndex,
+          };
+    }
+    cursor += 1;
+  }
+  return undefined;
+}
+
+function isUnquotedAssignmentKeyCharacter(
   character: string | undefined,
-  matchingQuote?: '"' | "'",
 ): boolean {
-  if (isAsciiAlphanumeric(character)) return true;
-  if (
+  // Everything canonicalization can discard remains admissible except syntax
+  // that separates free-text assignments or delimits quoted keys.
+  return !(
     character === undefined ||
+    isWhitespace(character) ||
+    character === '"' ||
+    character === "'" ||
     character === ":" ||
     character === "=" ||
     isAssignmentContainerBoundary(character)
-  ) {
-    return false;
-  }
-  if (character === '"' || character === "'") {
-    return matchingQuote !== undefined && character !== matchingQuote;
-  }
-  // Every other character is a separator removed by key canonicalization.
-  return true;
+  );
 }
 
-function assignmentKeyBefore(
+function unquotedAssignmentKeyAt(
   value: string,
-  separatorIndex: number,
-): AssignmentKey | undefined {
-  let keyEnd = separatorIndex;
-  while (keyEnd > 0 && isWhitespace(value[keyEnd - 1])) keyEnd -= 1;
-  if (keyEnd === 0) return undefined;
-
-  const quote = value[keyEnd - 1];
-  if (quote === '"' || quote === "'") {
-    const contentEnd = keyEnd - 1;
-    const minimumIndex = Math.max(
-      0,
-      contentEnd - CREDENTIAL_ASSIGNMENT_KEY_MAX_LENGTH - 1,
-    );
-    let cursor = contentEnd - 1;
-    while (cursor >= minimumIndex) {
-      const character = value[cursor];
-      if (character === quote) {
-        let escapeStart = cursor;
-        while (
-          escapeStart > minimumIndex &&
-          value[escapeStart - 1] === "\\"
-        ) {
-          escapeStart -= 1;
-        }
-        if (
-          escapeStart === minimumIndex &&
-          value[escapeStart - 1] === "\\"
-        ) {
-          return undefined;
-        }
-        if ((cursor - escapeStart) % 2 === 0) {
-          const candidate = value.slice(cursor + 1, contentEnd);
-          return candidate.length > 0
-            ? { value: candidate, quoted: true }
-            : undefined;
-        }
-        cursor = escapeStart - 1;
-        continue;
-      }
-      if (!isAssignmentKeyCharacter(character, quote)) return undefined;
-      cursor -= 1;
-    }
-    return undefined;
-  }
-
-  let keyStart = keyEnd;
-  let remaining = CREDENTIAL_ASSIGNMENT_KEY_MAX_LENGTH;
+  keyStart: number,
+): { key?: AssignmentKey; resumeAt: number } {
+  let keyEnd = keyStart;
   while (
-    keyStart > 0 &&
-    remaining > 0 &&
-    isAssignmentKeyCharacter(value[keyStart - 1])
+    keyEnd < value.length &&
+    isUnquotedAssignmentKeyCharacter(value[keyEnd])
   ) {
-    keyStart -= 1;
-    remaining -= 1;
+    keyEnd += 1;
   }
-  return keyStart < keyEnd
-    ? { value: value.slice(keyStart, keyEnd), quoted: false }
-    : undefined;
+  if (keyEnd - keyStart > CREDENTIAL_ASSIGNMENT_KEY_MAX_LENGTH) {
+    return { resumeAt: keyEnd };
+  }
+  const delimiterIndex = assignmentDelimiterAfter(value, keyEnd);
+  return {
+    ...(delimiterIndex === undefined
+      ? {}
+      : {
+          key: {
+            value: value.slice(keyStart, keyEnd),
+            quoted: false,
+            delimiterIndex,
+          },
+        }),
+    resumeAt: keyEnd,
+  };
 }
 
 function isUnquotedAssignmentValueTerminator(
@@ -185,7 +191,9 @@ function isUnquotedAssignmentValueTerminator(
     character === ";" ||
     character === "&" ||
     character === "}" ||
-    character === "]"
+    character === "]" ||
+    character === ")" ||
+    character === ">"
   );
 }
 
@@ -314,18 +322,50 @@ function isAlreadyRedactedAssignmentValue(
 
 function redactCredentialAssignments(value: string): string {
   const ranges: AssignmentValueRange[] = [];
-  for (let cursor = 0; cursor < value.length; cursor += 1) {
-    if (value[cursor] !== ":" && value[cursor] !== "=") continue;
-    const key = assignmentKeyBefore(value, cursor);
-    if (key === undefined || !isCredentialShapedKey(key.value)) continue;
-    const range = assignmentValueAfter(value, cursor);
-    if (range === undefined) continue;
-    if (key.quoted && value[cursor] === ":" && isJsonNonStringPrimitive(value, range)) {
-      cursor = Math.max(cursor, range.resumeAt - 1);
+  // The lexer cursor never retreats. Quoted-key lookahead is capped at 128
+  // code units, and a matched value is scanned once before the cursor skips it.
+  let cursor = 0;
+  while (cursor < value.length) {
+    let key: AssignmentKey | undefined;
+    let unmatchedResumeAt = cursor + 1;
+    const character = value[cursor];
+
+    if (character === '"' || character === "'") {
+      key = quotedAssignmentKeyAt(value, cursor);
+    } else if (
+      isUnquotedAssignmentKeyCharacter(character) &&
+      !isUnquotedAssignmentKeyCharacter(value[cursor - 1])
+    ) {
+      const candidate = unquotedAssignmentKeyAt(value, cursor);
+      key = candidate.key;
+      unmatchedResumeAt = candidate.resumeAt;
+    }
+
+    if (key === undefined) {
+      cursor = unmatchedResumeAt;
+      continue;
+    }
+
+    if (!isCredentialShapedKey(key.value)) {
+      cursor = key.delimiterIndex + 1;
+      continue;
+    }
+
+    const range = assignmentValueAfter(value, key.delimiterIndex);
+    if (range === undefined) {
+      cursor = key.delimiterIndex + 1;
+      continue;
+    }
+    if (
+      key.quoted &&
+      value[key.delimiterIndex] === ":" &&
+      isJsonNonStringPrimitive(value, range)
+    ) {
+      cursor = range.resumeAt;
       continue;
     }
     if (!isAlreadyRedactedAssignmentValue(value, range)) ranges.push(range);
-    cursor = Math.max(cursor, range.resumeAt - 1);
+    cursor = range.resumeAt;
   }
   if (ranges.length === 0) return value;
 
