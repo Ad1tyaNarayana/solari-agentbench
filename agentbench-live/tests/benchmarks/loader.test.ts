@@ -29,6 +29,39 @@ describe("BenchmarkLoader path safety", () => {
     expect(loaded.definition.agents[0]?.id).toBe("agent");
   });
 
+  it("sorts task and agent IDs by UTF-8 byte order", async () => {
+    const fixture = await createPack();
+    const agentsYaml = `schemaVersion: 1
+agents:
+  - schemaVersion: 1
+    id: ä
+    name: Umlaut Agent
+    provider: test
+    harness: { id: test, version: '1' }
+  - schemaVersion: 1
+    id: z
+    name: Z Agent
+    provider: test
+    harness: { id: test, version: '1' }
+`;
+    await writeFile(join(fixture.root, "agents.yaml"), agentsYaml);
+    await mkdir(join(fixture.root, "tasks", "z", "fixtures"), { recursive: true });
+    await mkdir(join(fixture.root, "tasks", "ä", "fixtures"), { recursive: true });
+    for (const id of ["z", "ä"]) {
+      await writeFile(
+        join(fixture.root, "tasks", id, "task.yaml"),
+        fixture.taskYaml.replace("id: task", `id: ${id}`),
+      );
+      await writeFile(join(fixture.root, "tasks", id, "prompt.md"), `Prompt ${id}`);
+      await writeFile(join(fixture.root, "tasks", id, "fixtures", "input.txt"), id);
+    }
+
+    const loaded = await new BenchmarkLoader(fixture.snapshots).load(fixture.root);
+
+    expect(loaded.definition.tasks.map((task) => task.id)).toEqual(["task", "z", "ä"]);
+    expect(loaded.definition.agents.map((agent) => agent.id)).toEqual(["z", "ä"]);
+  });
+
   it("rejects a prompt outside the pack root", async () => {
     const fixture = await createPack();
     await writeFile(join(fixture.root, "tasks/task/task.yaml"), fixture.taskYaml.replace("prompt.md", "../../../outside.md"));
