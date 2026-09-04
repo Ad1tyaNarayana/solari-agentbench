@@ -1,5 +1,4 @@
-import { handleGetBenchmarks, handlePostBenchmarks } from "@/app/api/benchmarks/route";
-import { handlePreviewBenchmark } from "@/app/api/benchmarks/preview/route";
+import { handleGetBenchmarks, handlePostBenchmarks, handlePreviewBenchmark } from "@/server/benchmark-handlers";
 
 const api = { listBenchmarks: vi.fn(async () => [{ id: "demo", name: "Demo", version: "1", writable: true }]), createBenchmark: vi.fn(async (input) => input), previewBenchmark: vi.fn(async () => ({ files: [], diagnostics: [], snapshotDigest: "abc" })) };
 test("exposes no-store benchmark metadata and strict preview/create bodies", async () => {

@@ -1,6 +1,3 @@
-import type { StudioApiPort } from "@/server/authoring-contracts";
-import { dataResponse } from "@/server/studio-route";
+import { handleGetProviders } from "@/server/provider-handlers";
 export const dynamic = "force-dynamic";
-async function api(): Promise<StudioApiPort> { return (await import("@/server/container")).getServerContainer() as StudioApiPort; }
-export async function handleGetProviders(port?: StudioApiPort) { return dataResponse((port ?? await api()).listProviders()); }
 export const GET = () => handleGetProviders();

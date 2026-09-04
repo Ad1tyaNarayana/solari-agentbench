@@ -1,5 +1,4 @@
-import { handleGetProviders } from "@/app/api/providers/route";
-import { handleGetCredentials } from "@/app/api/credentials/route";
+import { handleGetProviders, handleGetCredentials } from "@/server/provider-handlers";
 
 test("returns capabilities and credential metadata without secret values", async () => {
   const api = { listProviders: () => [{ id: "codex", capabilities: { tools: true } }], listCredentials: async () => [{ ref: "anthropic-main", label: "Claude", source: "environment", configured: true }] };

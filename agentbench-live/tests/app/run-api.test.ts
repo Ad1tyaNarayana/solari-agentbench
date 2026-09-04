@@ -2,9 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 import type { RunRecord } from "@/core/domain/run";
 import type { RunEvent, RunEventInput } from "@/core/events/run-events";
 import type { RunApiPort } from "@/server/contracts";
-import { handleGetRun } from "@/app/api/runs/[id]/route";
-import { handleRunEvents } from "@/app/api/runs/[id]/events/route";
-import { handleGetRuns, handlePostRuns } from "@/app/api/runs/route";
+import { handleGetRun, handleGetRuns, handlePostRuns } from "@/server/run-handlers";
+import { handleRunEvents } from "@/server/run-event-handler";
 
 const queuedRun: RunRecord = {
   id: "run-1",
