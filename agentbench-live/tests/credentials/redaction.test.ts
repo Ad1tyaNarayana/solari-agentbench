@@ -88,6 +88,18 @@ test("replaces sensitive containers while preserving token telemetry containers"
   });
 });
 
+test("preserves prototype-named output fields as inert own data", () => {
+  const input = JSON.parse(
+    '{"__proto__":{"token":"secret"},"constructor":"visible"}',
+  ) as Record<string, unknown>;
+
+  const output = redactCredentialOutput(input) as Record<string, unknown>;
+
+  expect(Object.hasOwn(output, "__proto__")).toBe(true);
+  expect(output.__proto__).toEqual({ token: "[REDACTED]" });
+  expect(output.constructor).toBe("visible");
+});
+
 test("detached errors replace sensitive provider containers without invoking them", () => {
   const failure = Object.assign(new Error("provider failed"), {
     token: Object.freeze({ nested: "secret" }),

@@ -61,7 +61,7 @@ export function redactCredentialOutput(
       return result;
     }
 
-    const result: Record<string, unknown> = {};
+    const result = Object.create(null) as Record<string, unknown>;
     seen.set(item, result);
     for (const [key, child] of Object.entries(item)) {
       result[redactCredentialText(key, snapshot, context)] =

@@ -254,6 +254,23 @@ test("JSONL redaction preserves object delimiters around signed URLs", () => {
   });
 });
 
+test("JSONL redaction keeps structured events parseable across escaped keys and values", () => {
+  const [event] = parseJsonl(
+    '{"type":"log","t\\u006fken":{"nested":"secret"},"details":{"api\\u005fkey":["secret"],"token_details":{"cached":2},"note":"token=abc\\\"def","url":"https://example.test/oauth/token?mode=view"}}',
+  );
+
+  expect(event).toEqual({
+    type: "log",
+    token: "[REDACTED]",
+    details: {
+      api_key: "[REDACTED]",
+      token_details: { cached: 2 },
+      note: "token=[REDACTED]",
+      url: "https://example.test/oauth/token?mode=view",
+    },
+  });
+});
+
 test("spawn runner reports a timed out process", async () => {
   const runner = new SpawnCommandRunner();
   const command = await runner.run({

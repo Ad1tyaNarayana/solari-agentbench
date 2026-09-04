@@ -108,16 +108,24 @@ function quotedValueRange(value: string, contentStart: number, quote: string): V
     : undefined;
 }
 
-function isUnquotedValueTerminator(character: string | undefined): boolean {
+function isUnquotedValueTerminator(
+  character: string | undefined,
+  allowQuotes: boolean,
+): boolean {
   return (
-    character === undefined || isWhitespace(character) || character === '"' ||
-    character === "'" || character === "," || character === ";" ||
+    character === undefined || isWhitespace(character) ||
+    (!allowQuotes && (character === '"' || character === "'")) ||
+    character === "," || character === ";" ||
     character === "&" || character === "}" || character === "]" ||
     character === ")" || character === ">"
   );
 }
 
-function valueAfter(value: string, key: AssignmentKey): ValueRange | undefined {
+function valueAfter(
+  value: string,
+  key: AssignmentKey,
+  allowQuotes: boolean,
+): ValueRange | undefined {
   let start = key.delimiterIndex + 1;
   while (start < value.length && isWhitespace(value[start])) start += 1;
   if (start === value.length) return undefined;
@@ -130,18 +138,22 @@ function valueAfter(value: string, key: AssignmentKey): ValueRange | undefined {
     return quotedValueRange(value, start, enclosingQuote);
   }
   let end = start;
-  while (end < value.length && !isUnquotedValueTerminator(value[end])) end += 1;
+  while (end < value.length && !isUnquotedValueTerminator(value[end], allowQuotes)) end += 1;
   return end > start ? { start, end, resumeAt: end } : undefined;
 }
 
-function isAlreadyRedacted(value: string, range: ValueRange): boolean {
+function isAlreadyRedacted(
+  value: string,
+  range: ValueRange,
+  allowQuotes: boolean,
+): boolean {
   let end = range.end;
   if (value[end] === "]") end += 1;
   return redactionPlaceholder.test(value.slice(range.start, end)) &&
-    (end === value.length || isUnquotedValueTerminator(value[end]));
+    (end === value.length || isUnquotedValueTerminator(value[end], allowQuotes));
 }
 
-function redactAssignments(value: string): string {
+function redactAssignments(value: string, allowQuotes = false): string {
   const ranges: ValueRange[] = [];
   let cursor = 0;
   while (cursor < value.length) {
@@ -163,12 +175,12 @@ function redactAssignments(value: string): string {
       cursor = key.delimiterIndex + 1;
       continue;
     }
-    const range = valueAfter(value, key);
+    const range = valueAfter(value, key, allowQuotes);
     if (range === undefined) {
       cursor = key.delimiterIndex + 1;
       continue;
     }
-    if (!isAlreadyRedacted(value, range)) ranges.push(range);
+    if (!isAlreadyRedacted(value, range, allowQuotes)) ranges.push(range);
     cursor = range.resumeAt;
   }
   if (ranges.length === 0) return value;
@@ -212,7 +224,11 @@ function redactUrl(candidate: string, context: RedactionContext): string {
   return candidate;
 }
 
-function redactFreeText(value: string, context: RedactionContext): string {
+function redactFreeText(
+  value: string,
+  context: RedactionContext,
+  decodedJsonString = false,
+): string {
   const urlPattern = /https?:\/\/[^\s"'<>\[\]{},;()]+/gi;
   const parts: string[] = [];
   let copiedThrough = 0;
@@ -220,20 +236,28 @@ function redactFreeText(value: string, context: RedactionContext): string {
     const start = match.index;
     const candidate = match[0];
     parts.push(
-      replaceLiteralSecrets(redactAssignments(value.slice(copiedThrough, start)), context),
+      replaceLiteralSecrets(
+        redactAssignments(value.slice(copiedThrough, start), decodedJsonString),
+        context,
+      ),
       redactUrl(candidate, context),
     );
     copiedThrough = start + candidate.length;
   }
-  parts.push(replaceLiteralSecrets(redactAssignments(value.slice(copiedThrough)), context));
+  parts.push(
+    replaceLiteralSecrets(
+      redactAssignments(value.slice(copiedThrough), decodedJsonString),
+      context,
+    ),
+  );
   return parts.join("");
 }
 
 function redactJsonValue(value: unknown, context: RedactionContext): unknown {
-  if (typeof value === "string") return redactFreeText(value, context);
+  if (typeof value === "string") return redactFreeText(value, context, true);
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((item) => redactJsonValue(item, context));
-  const output: Record<string, unknown> = {};
+  const output = Object.create(null) as Record<string, unknown>;
   for (const [key, child] of Object.entries(value)) {
     const safeKey = redactFreeText(key, context);
     output[safeKey] = isCredentialShapedKey(key)

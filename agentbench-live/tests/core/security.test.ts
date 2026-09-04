@@ -256,6 +256,19 @@ test("structured redaction preserves telemetry and redacts nested exact keys", (
   });
 });
 
+test("structured redaction preserves prototype-named JSON fields as own data", () => {
+  const output = redact(
+    '{"__proto__":{"token":"secret"},"constructor":"visible"}',
+  );
+
+  expect(JSON.parse(output)).toEqual(
+    JSON.parse(
+      '{"__proto__":{"token":"[REDACTED]"},"constructor":"visible"}',
+    ),
+  );
+  expect(output).toContain('"__proto__"');
+});
+
 test("free-text redaction shields safe OAuth URLs from assignment scanning", () => {
   expect(
     redact("endpoint=https://example.test/oauth/token?mode=view"),
