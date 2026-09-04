@@ -9,7 +9,7 @@ const Action = z.discriminatedUnion("type", [
   z.object({ type: z.literal("goto"), url: Value }).strict(),
   z.object({ type: z.literal("fill"), selector: z.string(), value: z.string() }).strict(),
   z.object({ type: z.literal("click"), selector: z.string() }).strict(),
-  z.object({ type: z.literal("assertText"), selector: z.string(), contains: z.string() }).strict(),
+  z.object({ type: z.literal("assertText"), selector: z.string(), contains: Value }).strict(),
   z.object({ type: z.literal("assertUrl"), matches: z.string() }).strict(),
   z.object({ type: z.literal("screenshot"), role: z.string().default("screenshot") }).strict(),
 ]);
@@ -30,7 +30,7 @@ export class BrowserEvaluator implements Evaluator {
       if (action.type === "goto") { const url = resolveValue(action.url, context); if (typeof url !== "string") throw new Error("Browser URL did not resolve to a string"); await page.goto(url); }
       else if (action.type === "fill") await page.fill(action.selector, action.value);
       else if (action.type === "click") await page.click(action.selector);
-      else if (action.type === "assertText") { const observed = await page.textContent(action.selector); assertions.push({ id: `${definition.id}.${index + 1}`, passed: observed?.includes(action.contains) ?? false, summary: `Text at ${action.selector} contains expected value`, expected: action.contains, observed }); }
+      else if (action.type === "assertText") { const expected = resolveValue(action.contains, context); if (typeof expected !== "string") throw new Error("Browser expected text did not resolve to a string"); const observed = await page.textContent(action.selector); assertions.push({ id: `${definition.id}.${index + 1}`, passed: observed?.includes(expected) ?? false, summary: `Text at ${action.selector} contains expected value`, expected, observed }); }
       else if (action.type === "assertUrl") { const observed = page.url(); assertions.push({ id: `${definition.id}.${index + 1}`, passed: new RegExp(action.matches).test(observed), summary: "Current URL matches", expected: action.matches, observed }); }
       else evidence.push(await context.evidence.putBytes({ evaluatorId: definition.id, mimeType: "image/png", role: action.role, producer: "evaluator", bytes: await page.screenshot() }));
     }

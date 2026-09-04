@@ -1,17 +1,48 @@
 import { z } from "zod";
+import { posix } from "node:path";
 import type { EvaluatorDefinition } from "@/core/benchmarks/types";
 import { uploadSnapshotTree, uploadTextTree } from "@/core/solari/upload-tree";
 import type { Evaluator, EvaluatorContext, EvaluatorOutcome } from "./types";
 import { buildInputSeal, verifyInputSeal } from "./input-seal";
 
+const ResultPreview = z.object({
+  directory: z.string().refine((value) => {
+    const normalized = posix.normalize(value);
+    return normalized === value && (normalized === "/result" || normalized.startsWith("/result/"));
+  }, "result preview directory must be /result or one of its descendants"),
+  port: z.number().int().min(1).max(65535),
+  healthPath: z.string().startsWith("/").default("/"),
+}).strict();
+
 const Config = z.object({
   argv: z.array(z.string()).min(1).max(256), network: z.boolean().default(false), timeoutMs: z.number().int().positive().max(3_600_000).optional(),
   background: z.boolean().default(false), publishPort: z.number().int().min(1).max(65535).optional(), healthPath: z.string().startsWith("/").optional(),
-}).strict();
+  resultPreview: ResultPreview.optional(),
+}).strict().superRefine((value, context) => {
+  if (value.background && value.resultPreview) {
+    context.addIssue({ code: "custom", message: "background and resultPreview cannot be combined" });
+  }
+});
 const ResultFile = z.object({
   assertions: z.array(z.object({ id: z.string(), passed: z.boolean(), summary: z.string(), expected: z.unknown().optional(), observed: z.unknown().optional() }).strict()).max(1_000),
   outputs: z.record(z.string(), z.unknown()).default({}), evidence: z.array(z.object({ path: z.string(), role: z.string(), mimeType: z.string() }).strict()).default([]),
 }).strict();
+
+async function waitForHealthy(url: string, timeoutMs: number): Promise<void> {
+  const healthDeadline = Date.now() + Math.min(timeoutMs, 30_000);
+  let lastStatus = "unreachable";
+  while (Date.now() < healthDeadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(Math.min(2_000, Math.max(1, healthDeadline - Date.now()))) });
+      lastStatus = String(response.status);
+      if (response.ok) return;
+    } catch (error) {
+      lastStatus = error instanceof Error ? error.message : "unreachable";
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Preview health check failed: ${lastStatus}`);
+}
 
 export class CommandEvaluator implements Evaluator {
   readonly type = "command" as const;
@@ -82,13 +113,7 @@ export class CommandEvaluator implements Evaluator {
       await sandbox.start(argv[0], argv.slice(1), { cwd: "/submission", env, timeoutMs });
       const preview = await sandbox.previewUrl(config.publishPort);
       const health = new URL(config.healthPath ?? "/", preview.url).toString();
-      const healthDeadline = Date.now() + Math.min(timeoutMs, 30_000);
-      let healthy = false; let lastStatus = "unreachable";
-      while (Date.now() < healthDeadline) {
-        try { const response = await fetch(health, { signal: AbortSignal.timeout(Math.min(2_000, Math.max(1, healthDeadline - Date.now()))) }); lastStatus = String(response.status); if (response.ok) { healthy = true; break; } } catch (error) { lastStatus = error instanceof Error ? error.message : "unreachable"; }
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-      if (!healthy) throw new Error(`Preview health check failed: ${lastStatus}`);
+      await waitForHealthy(health, timeoutMs);
       return { status: "passed", earnedFraction: 1, summary: "Background service is healthy", assertions: [{ id: `${definition.id}.health`, passed: true, summary: "Preview health check" }], evidence: [], outputs: { previewUrl: preview.url }, metadata };
     }
     const result = await sandbox.exec(argv[0], argv.slice(1), { cwd: "/submission", timeoutMs, env });
@@ -102,6 +127,20 @@ export class CommandEvaluator implements Evaluator {
     const assertions = parsed?.assertions ?? [{ id: `${definition.id}.exit`, passed: result.exitCode === 0, summary: `Command exited with ${result.exitCode}`, expected: 0, observed: result.exitCode }];
     const passedCount = assertions.filter((item) => item.passed).length;
     const passed = result.exitCode === 0 && passedCount === assertions.length;
-    return { status: passed ? "passed" : "failed", earnedFraction: assertions.length ? passedCount / assertions.length : (passed ? 1 : 0), summary: passed ? "Command assertions passed" : "Command assertion failed", assertions, evidence, outputs: parsed?.outputs ?? {}, metadata: { ...metadata, exitCode: result.exitCode } };
+    let previewUrl: string | undefined;
+    if (config.resultPreview) {
+      await sandbox.start(
+        "python3",
+        ["-m", "http.server", String(config.resultPreview.port), "--directory", config.resultPreview.directory],
+        { cwd: "/result", env: {}, timeoutMs },
+      );
+      const preview = await sandbox.previewUrl(config.resultPreview.port);
+      await waitForHealthy(
+        new URL(config.resultPreview.healthPath, preview.url).toString(),
+        timeoutMs,
+      );
+      previewUrl = preview.url;
+    }
+    return { status: passed ? "passed" : "failed", earnedFraction: assertions.length ? passedCount / assertions.length : (passed ? 1 : 0), summary: passed ? "Command assertions passed" : "Command assertion failed", assertions, evidence, outputs: { ...(parsed?.outputs ?? {}), ...(previewUrl ? { previewUrl } : {}) }, metadata: { ...metadata, exitCode: result.exitCode, ...(previewUrl ? { resultPreview: true } : {}) } };
   }
 }

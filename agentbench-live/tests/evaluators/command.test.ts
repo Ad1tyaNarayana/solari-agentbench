@@ -142,6 +142,59 @@ test("fails closed and records evidence when final integrity enumeration breaks"
   }));
 });
 
+test("serves only evaluator result output after a network-isolated command exits", async () => {
+  const sandbox = fakeSandbox();
+  sandbox.previewUrl.mockResolvedValue({ url: "https://preview.test" });
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 })));
+  const evaluatorContext = await context(sandbox);
+  try {
+    const outcome = await new CommandEvaluator().evaluate({
+      id: "verify",
+      type: "command",
+      weight: 100,
+      enabled: true,
+      prerequisites: [],
+      config: {
+        argv: ["node", "/benchmark/verify.mjs"],
+        network: false,
+        resultPreview: {
+          directory: "/result/viewer",
+          port: 4173,
+          healthPath: "/index.html",
+        },
+      },
+    }, evaluatorContext, new AbortController().signal);
+
+    expect(sandbox.exec.mock.calls.some(([command, args]) =>
+      command === "unshare" && args?.includes("--mount-proc"),
+    )).toBe(true);
+    expect(sandbox.start).toHaveBeenCalledWith(
+      "python3",
+      ["-m", "http.server", "4173", "--directory", "/result/viewer"],
+      expect.objectContaining({ cwd: "/result" }),
+    );
+    expect(outcome.outputs.previewUrl).toBe("https://preview.test");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("rejects a result preview directory outside the evaluator-owned result tree", async () => {
+  const sandbox = fakeSandbox();
+  await expect(new CommandEvaluator().evaluate({
+    id: "verify",
+    type: "command",
+    weight: 100,
+    enabled: true,
+    prerequisites: [],
+    config: {
+      argv: ["true"],
+      resultPreview: { directory: "/submission", port: 4173 },
+    },
+  }, await context(sandbox), new AbortController().signal)).rejects.toThrow(/result preview.*\/result/i);
+  expect(sandbox.writeFile).not.toHaveBeenCalled();
+});
+
 test("maps command exits to failed assertions and network infrastructure failures to errors", async () => {
   const sandbox = fakeSandbox(2);
   expect((await new CommandEvaluator().evaluate({ id: "cmd", type: "command", weight: 100, enabled: true, prerequisites: [], config: { argv: ["false"], network: true } }, await context(sandbox), new AbortController().signal)).status).toBe("failed");
