@@ -86,6 +86,41 @@ test("redacts JWT and common auth query parameters case-insensitively on any hos
   );
 });
 
+test("canonicalizes weird-case and separated credential keys in URLs and nested objects", () => {
+  const output = redactCredentialOutput({
+    urls: [
+      "https://one.example.test/path?jWt=url-jwt-secret",
+      "https://two.example.test/path?A.p-I__K_eY=url-api-secret",
+      "https://three.example.test/path?AcCeSs---To_Ken=url-token-secret",
+    ],
+    nested: {
+      jWT: "nested-jwt-secret",
+      "A.p-I__K_eY": "nested-api-secret",
+      "sIG--n_a.tURE": "nested-signature-secret",
+      "cre-D.en_TI_al": "nested-credential-secret",
+      "s_E.c-R_eT": "nested-generic-secret",
+    },
+  });
+
+  expect(output).toEqual({
+    urls: [
+      "[REDACTED_SIGNED_URL]",
+      "[REDACTED_SIGNED_URL]",
+      "[REDACTED_SIGNED_URL]",
+    ],
+    nested: {
+      jWT: "[REDACTED]",
+      "A.p-I__K_eY": "[REDACTED]",
+      "sIG--n_a.tURE": "[REDACTED]",
+      "cre-D.en_TI_al": "[REDACTED]",
+      "s_E.c-R_eT": "[REDACTED]",
+    },
+  });
+  expect(JSON.stringify(output)).not.toMatch(
+    /url-jwt-secret|url-api-secret|url-token-secret|nested-.*-secret/,
+  );
+});
+
 test("keeps identical active values registered until every scope releases", async () => {
   const store = environmentStore({ first: "shared-secret", second: "shared-secret" });
 
@@ -127,7 +162,8 @@ test("redacts an error thrown from a credential callback before releasing scope"
     })
     .catch((error: unknown) => error);
 
-  expect(rejection).toBe(failure);
+  expect(rejection === failure).toBe(false);
+  expect(rejection).toBeInstanceOf(Error);
   expect((rejection as Error).message).toBe("request failed with [REDACTED]");
   expect((rejection as Error & { detail: unknown }).detail).toEqual({
     response: "echoed [REDACTED]",
@@ -160,21 +196,25 @@ test("redacts non-enumerable and cyclic error state while preserving error shape
     })
     .catch((error: unknown) => error);
 
-  expect(rejection).toBe(failure);
+  expect(rejection === failure).toBe(false);
   expect(rejection).toBeInstanceOf(AggregateError);
-  expect(String(failure)).not.toContain(secret);
-  expect(failure.name).not.toContain(secret);
-  expect(failure.cause).toBe(cause);
-  expect(String(cause)).not.toContain(secret);
-  expect(cause.name).not.toContain(secret);
-  expect(failure.errors[0]).toBe(nested);
-  expect(String(failure.errors[0])).not.toContain(secret);
-  expect(failure.errors[1]).toBe("string [REDACTED]");
-  expect(failure.errors[2]).toBe(failure);
-  expect((failure as AggregateError & { detail: typeof detail }).detail).toMatchObject({
+  const safe = rejection as AggregateError & { detail: typeof detail };
+  expect(String(safe)).not.toContain(secret);
+  expect(safe.name).toBe("AggregateError");
+  expect(safe.cause === cause).toBe(false);
+  expect(safe.cause).toBeInstanceOf(RangeError);
+  expect(String(safe.cause)).not.toContain(secret);
+  expect((safe.cause as Error).name).toBe("RangeError");
+  expect(safe.errors[0] === nested).toBe(false);
+  expect(safe.errors[0]).toBeInstanceOf(TypeError);
+  expect(String(safe.errors[0])).not.toContain(secret);
+  expect(safe.errors[1]).toBe("string [REDACTED]");
+  expect(safe.errors[2]).toBe(safe);
+  expect(safe.detail).toMatchObject({
     token: "[REDACTED]",
   });
-  expect(detail.self).toBe(detail);
+  expect(safe.detail === detail).toBe(false);
+  expect(safe.detail.self).toBe(safe.detail);
 });
 
 test("redacts an Error name inherited from its provider-defined prototype", async () => {
@@ -193,8 +233,9 @@ test("redacts an Error name inherited from its provider-defined prototype", asyn
     })
     .catch((error: unknown) => error);
 
-  expect(rejection).toBe(failure);
-  expect((rejection as Error).name).toBe("Provider-[REDACTED]");
+  expect(rejection === failure).toBe(false);
+  expect(rejection).toBeInstanceOf(Error);
+  expect((rejection as Error).name).toBe("Error");
   expect(String(rejection)).not.toContain(secret);
 });
 

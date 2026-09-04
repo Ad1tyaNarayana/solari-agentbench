@@ -7,35 +7,13 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const sensitiveUrlParameters = new Set([
-  "access_token",
-  "api_key",
-  "auth",
-  "authorization",
-  "credential",
-  "expires",
-  "id_token",
-  "jwt",
-  "key",
-  "client_secret",
-  "refresh_token",
-  "session_token",
-  "sig",
-  "signature",
-  "token",
-  "x-amz-credential",
-  "x-amz-signature",
-]);
-
-function isSensitiveUrlParameter(key: string): boolean {
-  const normalized = key
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .toLowerCase();
+export function isCredentialShapedKey(key: string): boolean {
+  const canonical = key.toLowerCase().replace(/[^a-z0-9]+/g, "");
   return (
-    sensitiveUrlParameters.has(normalized) ||
-    /(?:^|[_-])(?:auth|credential|jwt|secret|signature|sig|token)(?:$|[_-])/.test(
-      normalized,
-    )
+    canonical === "auth" ||
+    canonical === "key" ||
+    canonical === "sig" ||
+    /apikey|authorization|credential|jwt|secret|signature|token/.test(canonical)
   );
 }
 
@@ -52,7 +30,7 @@ function redactCredentialUrls(value: string): string {
     }
     if (
       [...parsed.searchParams.keys()].some((key) =>
-        isSensitiveUrlParameter(key),
+        isCredentialShapedKey(key),
       )
     ) {
       return "[REDACTED_SIGNED_URL]";

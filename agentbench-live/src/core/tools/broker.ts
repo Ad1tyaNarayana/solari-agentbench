@@ -14,6 +14,7 @@ import type { ResourceSupervisor } from "@/core/solari/resource-supervisor";
 import { SolariTools } from "./solari-tools";
 import {
   AgentToolError,
+  type AgentToolErrorCode,
   allToolContracts,
   COMMAND_OUTPUT_MAX_BYTES,
   type IsolatedWorkspaceCommandRunner,
@@ -45,6 +46,20 @@ const workspaceNames = new Set(
 );
 const executionNames = new Set(["workspace_exec", "sandbox_exec", "desktop_exec"]);
 const screenshotNames = new Set(["browser_screenshot", "desktop_screenshot"]);
+const agentToolErrorCodes = new Set<AgentToolErrorCode>([
+  "unknown_tool",
+  "invalid_arguments",
+  "path_forbidden",
+  "symlink_forbidden",
+  "input_limit",
+  "output_limit",
+  "deadline_exceeded",
+  "isolation_unavailable",
+  "execution_failed",
+  "primitive_not_planned",
+  "resource_tracking_failed",
+  "unknown_handle",
+]);
 
 function serializedBytes(value: unknown, toolName: string): number {
   try {
@@ -182,7 +197,22 @@ export class PolicyBoundAgentToolBroker implements AgentToolBroker {
       );
     } catch (error) {
       const sanitized = redactCredentialError(error);
-      if (sanitized instanceof AgentToolError) throw sanitized;
+      if (error instanceof AgentToolError && sanitized instanceof Error) {
+        const safe = sanitized as Error & {
+          code?: unknown;
+          toolName?: unknown;
+          cause?: unknown;
+        };
+        const code =
+          typeof safe.code === "string" &&
+          agentToolErrorCodes.has(safe.code as AgentToolErrorCode)
+            ? safe.code as AgentToolErrorCode
+            : "execution_failed";
+        throw new AgentToolError(code, safe.message, {
+          ...(typeof safe.toolName === "string" ? { toolName: safe.toolName } : {}),
+          ...(Object.hasOwn(safe, "cause") ? { cause: safe.cause } : {}),
+        });
+      }
       throw new AgentToolError("execution_failed", "Agent tool invocation failed", {
         toolName: name,
         cause: sanitized,

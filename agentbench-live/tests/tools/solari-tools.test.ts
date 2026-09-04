@@ -207,6 +207,104 @@ describe("Solari tool policy and lifecycle", () => {
     }
   });
 
+  it("replaces hostile frozen provider errors with inert causes without invoking accessors", async () => {
+    const exactSecret = "hostile-provider-secret";
+    let getterCalls = 0;
+    const detail: Record<string, unknown> = {};
+    detail.self = detail;
+    Object.defineProperty(detail, "jWt", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return exactSecret;
+      },
+    });
+    Object.defineProperty(detail, Symbol.toPrimitive, {
+      value: () => exactSecret,
+    });
+    Object.freeze(detail);
+
+    const hostile = new Error(`provider failed with ${exactSecret}`);
+    Object.defineProperty(hostile, "token", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return exactSecret;
+      },
+    });
+    Object.defineProperties(hostile, {
+      detail: { enumerable: true, value: detail },
+      toString: { value: () => exactSecret },
+      valueOf: { value: () => exactSecret },
+      [Symbol.toPrimitive]: { value: () => exactSecret },
+    });
+    Object.freeze(hostile);
+
+    const fake = fakeSolari();
+    fake.sandbox.exec = vi.fn(async () => {
+      throw hostile;
+    });
+    const supervisor = new ResourceSupervisor();
+    const broker = createAgentToolBroker({
+      workspace: { root: process.cwd(), dispose: async () => undefined },
+      plan: {
+        primitives: ["sandbox"],
+        reason: { sandbox: "execute" },
+        verificationStrategy: "inspect safe failure",
+      },
+      services: fake.services,
+      supervisor,
+      sink: { emit: async () => undefined, close: () => undefined },
+      remainingMs: () => 60_000,
+      environment: {},
+    });
+    const release = registerCredentialValue(exactSecret);
+    try {
+      await broker.invoke("sandbox_create", {}, new AbortController().signal);
+      const rejection = (await broker
+        .invoke(
+          "sandbox_exec",
+          { handle: "s-1", command: "node", args: [] },
+          new AbortController().signal,
+        )
+        .catch((error: unknown) => error)) as AgentToolError;
+
+      expect(rejection).toBeInstanceOf(AgentToolError);
+      expect(rejection.code).toBe("execution_failed");
+      expect(getterCalls).toBe(0);
+      expect(rejection.cause === hostile).toBe(false);
+      expect(rejection.cause).toBeInstanceOf(Error);
+      expect(String(rejection.cause)).not.toContain(exactSecret);
+      expect(`${rejection.cause}`).not.toContain(exactSecret);
+      const safeCause = rejection.cause as Error & {
+        token?: unknown;
+        detail?: Record<string, unknown>;
+      };
+      const tokenDescriptor = Object.getOwnPropertyDescriptor(safeCause, "token");
+      expect(tokenDescriptor).toMatchObject({ value: "[REDACTED]" });
+      expect(tokenDescriptor).not.toHaveProperty("get");
+      expect(tokenDescriptor).not.toHaveProperty("set");
+      expect(Object.hasOwn(safeCause, "toString")).toBe(false);
+      expect(Object.hasOwn(safeCause, "valueOf")).toBe(false);
+      expect(Object.hasOwn(safeCause, Symbol.toPrimitive)).toBe(false);
+      const safeDetail = safeCause.detail;
+      expect(safeDetail).toBeDefined();
+      if (safeDetail === undefined) throw new Error("Expected inert detail clone");
+      expect(safeDetail === detail).toBe(false);
+      expect(safeDetail.self).toBe(safeDetail);
+      const jwtDescriptor = Object.getOwnPropertyDescriptor(safeDetail, "jWt");
+      expect(jwtDescriptor).toMatchObject({ value: "[REDACTED]" });
+      expect(jwtDescriptor).not.toHaveProperty("get");
+      expect(jwtDescriptor).not.toHaveProperty("set");
+      expect(Object.hasOwn(safeDetail, Symbol.toPrimitive)).toBe(false);
+      expect(collectLoggableErrorText(rejection)).not.toContain(exactSecret);
+      expect(getterCalls).toBe(0);
+    } finally {
+      release();
+      await supervisor.cleanup();
+    }
+  });
+
   it("requires the planned primitive on every creation and subsequent operation", async () => {
     const { broker, services } = brokerFor(["sandbox"]);
     const signal = new AbortController().signal;
