@@ -18,9 +18,9 @@ export const RunPlanSchema = z
       browser: z.string().min(3).nullable().optional(),
       sandbox: z.string().min(3).nullable().optional(),
       desktop: z.string().min(3).nullable().optional(),
-    }),
+    }).strict(),
     verificationStrategy: z.string().min(3),
-  })
+  }).strict()
   .superRefine((plan, ctx) => {
     for (const primitive of plan.primitives) {
       if (!plan.reason[primitive]) {

@@ -102,7 +102,7 @@ export function createServerContainer(): RunApiPort & StudioApiPort {
   const events = new RunEventBus();
   const queue = new RunQueue(1);
   const snapshotRoot = resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH);
-  const writableRoot = resolve(process.env.AGENTBENCH_WRITABLE_ROOT ?? "benchmarks/local");
+  const writableRoot = resolve(/* turbopackIgnore: true */ process.env.AGENTBENCH_WRITABLE_ROOT ?? "benchmarks/local");
   const authoring = new AuthoringService({ writableRoots: [writableRoot], snapshotsRoot: snapshotRoot });
   const credentials = createDefaultCredentialStore();
   const providers = createBuiltinProviderRegistry(credentials);
@@ -156,6 +156,11 @@ export function createServerContainer(): RunApiPort & StudioApiPort {
     submit,
     listRuns: () => repository.list(),
     getRun: (id) => repository.get(id),
+    cancelRun: (id) => orchestrator ? orchestrator.cancel(id) : (() => {
+      const run = repository.get(id); if (!run || ["completed", "failed", "cancelled"].includes(run.stage)) return run;
+      const cancelled = repository.update(id, { stage: "cancelled", completedAt: new Date().toISOString() });
+      const event = repository.appendEvent(id, { kind: "stage", payload: { stage: "cancelled" } }); events.publish(id, event); return cancelled;
+    })(),
     listEvents: (runId) => repository.listEvents(runId),
     subscribe: (runId, listener) => events.subscribe(runId, listener),
     listBenchmarks: async () => {

@@ -7,7 +7,7 @@ import type { EvaluatorContext } from "@/core/evaluators/types";
 async function fixture(responses: string[]) {
   const root = await mkdtemp(join(tmpdir(), "agentbench-judge-"));
   await writeFile(join(root, "rubric.md"), "Score correctness.");
-  const completeStructured = vi.fn(async (_input: { prompt: string }) => ({ text: responses.shift()!, resolvedModel: "judge-v1", usage: { inputTokens: 10, outputTokens: 5 } }));
+  const completeStructured = vi.fn(async (input: { prompt: string }) => { void input; return { text: responses.shift()!, resolvedModel: "judge-v1", usage: { inputTokens: 10, outputTokens: 5 } }; });
   const putText = vi.fn(async (input) => ({ ...input, digest: "a".repeat(64), size: 10, runId: "r", taskId: "t", createdAt: "now", redacted: true }));
   const putJson = vi.fn(async (input) => ({ ...input, digest: "b".repeat(64), size: 10, runId: "r", taskId: "t", createdAt: "now", redacted: true }));
   return { context: { runId: "r", taskId: "t", snapshot: { root, digest: "s", files: [{ path: "rubric.md", digest: "rubric-digest", size: 18 }] }, submission: { digest: "sub", entries: { "report.md": { kind: "text", contents: "finding" }, "secret.txt": { kind: "text", contents: "not selected" } } }, providers: { getStructuredCompletion: () => ({ completeStructured }) }, evidence: { putText, putJson } } as unknown as EvaluatorContext, completeStructured, putText };

@@ -1,16 +1,17 @@
 import type { RunStage } from "@/core/domain/run";
 
 const allowed: Record<RunStage, RunStage[]> = {
-  queued: ["loading", "failed"],
-  loading: ["preflight", "failed"],
-  preflight: ["planning", "failed"],
-  planning: ["generating", "failed"],
-  generating: ["provisioning", "failed"],
-  provisioning: ["building", "failed"],
-  building: ["verifying", "failed"],
-  verifying: ["capturing", "completed", "failed"],
-  capturing: ["completed", "failed"],
+  queued: ["loading", "failed", "cancelled"],
+  loading: ["preflight", "failed", "cancelled"],
+  preflight: ["planning", "failed", "cancelled"],
+  planning: ["generating", "failed", "cancelled"],
+  generating: ["provisioning", "failed", "cancelled"],
+  provisioning: ["building", "failed", "cancelled"],
+  building: ["verifying", "failed", "cancelled"],
+  verifying: ["capturing", "completed", "failed", "cancelled"],
+  capturing: ["completed", "failed", "cancelled"],
   completed: [],
+  cancelled: [],
   failed: [],
 };
 

@@ -201,3 +201,17 @@ test("labels a terminal run as closed instead of waiting for events", () => {
   expect(screen.getByText(/live stream closed/i)).toBeInTheDocument();
   expect(FakeEventSource.instances).toHaveLength(0);
 });
+
+test("groups normalized provider events by operator-facing category", () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  render(<LiveRun runId="run-1" initialStage="generating" />);
+  const source = FakeEventSource.instances[0];
+  act(() => {
+    source.emit("provider_event", { kind: "tool-request", payload: { tool: "sandbox.exec" } }, "1");
+    source.emit("provider_event", { kind: "resource-created", payload: { primitive: "sandbox" } }, "2");
+    source.emit("provider_event", { kind: "usage", payload: { inputTokens: 10 } }, "3");
+  });
+  expect(screen.getByRole("heading", { name: "Local tools" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Solari resources" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Usage" })).toBeInTheDocument();
+});

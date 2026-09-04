@@ -10,6 +10,7 @@ export interface RunApiPort {
   submit(request: RunRequest & { dryRun?: boolean }): Promise<RunSubmission>;
   listRuns(): RunRecord[];
   getRun(id: string): RunRecord | undefined;
+  cancelRun(id: string): RunRecord | undefined;
   listEvents(runId: string): RunEvent[];
   subscribe(runId: string, listener: (event: RunEventInput) => void): () => void;
 }

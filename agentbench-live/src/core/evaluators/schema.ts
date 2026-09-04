@@ -9,7 +9,8 @@ const Config = z.object({ subject: z.string().min(1), schema: z.string().min(1) 
 export class SchemaEvaluator implements Evaluator {
   readonly type = "schema" as const;
   validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
-  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, _signal: AbortSignal): Promise<EvaluatorOutcome> {
+  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, signal: AbortSignal): Promise<EvaluatorOutcome> {
+    void signal;
     const config = Config.parse(definition.config);
     const entry = context.submission.entries[config.subject];
     if (!entry || entry.kind !== "text") throw new Error(`Schema subject is not a text file: ${config.subject}`);

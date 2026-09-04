@@ -23,7 +23,8 @@ export function ellipseRmse(points: Point[], target: Ellipse): number { if (!poi
 export class NumericEvaluator implements Evaluator {
   readonly type = "numeric" as const;
   validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
-  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, _signal: AbortSignal): Promise<EvaluatorOutcome> {
+  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, signal: AbortSignal): Promise<EvaluatorOutcome> {
+    void signal;
     const config = Config.parse(definition.config);
     const actualInput = resolveValue(config.actual, context);
     const expectedInput = resolveValue(config.expected, context);

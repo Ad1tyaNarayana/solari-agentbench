@@ -21,7 +21,8 @@ export class FileEvaluator implements Evaluator {
   readonly type = "file" as const;
   validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
 
-  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, _signal: AbortSignal): Promise<EvaluatorOutcome> {
+  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, signal: AbortSignal): Promise<EvaluatorOutcome> {
+    void signal;
     const config = Config.parse(definition.config);
     const entry = context.submission.entries[normalize(config.subject)];
     const bytes = entry ? (entry.kind === "text" ? Buffer.from(entry.contents) : Buffer.from(entry.contents)) : undefined;

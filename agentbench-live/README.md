@@ -12,7 +12,7 @@ AgentBench uses all three Solari primitives, selected per task rather than provi
 - **Browser** records the URL Shortener flow and verifies its final redirect target.
 - **Desktop** captures permanent GUI evidence for the web task after the browser assertions pass.
 
-The initial matrix compares two exact Codex configurations under identical prompts and budgets:
+The bundled tutorial compares two exact Codex configurations under identical prompts and budgets, while custom packs may use Codex, Anthropic, an OpenAI-compatible API, or any executable that implements the JSONL harness protocol:
 
 | Agent | Model | Reasoning |
 | --- | --- | --- |
@@ -32,13 +32,13 @@ Next.js dashboard ──> in-process queue ──> planning-only Codex call
         │                                      │
         │                               generating Codex call
         │                                      │
-        └── SQLite + SSE <── verifier <── scanned submission
-                                  │
-                         fresh Solari resources
-                    sandbox + browser + optional desktop
+        └── SQLite + SSE <── evaluator graph <── scanned submission
+                                      │
+                              verifier-owned evidence
+                    static checks + model judge + optional Solari
 ```
 
-Planning and generation are deliberately separate. Planning has no Solari tools attached, so no billable resource can exist before the plan passes the shared Zod/JSON Schema contract. Generation runs locally with an ephemeral Codex process and a run-scoped Solari MCP configuration; verification uses task-owned code and fresh Solari resources.
+Planning and generation are deliberately separate. Planning has no Solari tools attached, so no billable resource can exist before the plan passes the shared Zod/JSON Schema contract. The validated plan lets the agent choose browser, sandbox, and/or desktop only when the task permits them. Evaluation then runs a weighted prerequisite graph owned by the benchmark—not by the agent.
 
 ## Requirements
 
@@ -73,6 +73,8 @@ npm run dev
 
 Open <http://localhost:3000>. With an empty database the dashboard displays a clearly labeled representative four-cell demo; persisted local runs take precedence as soon as one exists.
 
+Open <http://localhost:3000/studio> to create a custom benchmark. Studio edits the canonical files directly, previews the exact YAML and prompt/rubric assets, detects external edits by revision hash, and atomically swaps a fully validated pack into `benchmarks/local`. Save before dry-running or launching; paid launches require the explicit credit acknowledgement.
+
 ## Benchmark packs
 
 Benchmark packs are canonical, version-controlled folders. The bundled tutorial is at `benchmarks/tutorials/agentbench-live`:
@@ -91,7 +93,11 @@ agentbench-live/
       fixtures/seed.csv
 ```
 
-`benchmark.yaml` declares pack identity and task roots, `agents.yaml` declares provider/model/harness identity, and each task owns its prompt, fixtures, evaluator declarations, and compatibility policy. Every run loads the complete pack into a content-addressed snapshot before provider preflight. Source edits after launch therefore affect only future runs. Snapshots default to `.agentbench/snapshots`; override that gitignored working location with `AGENTBENCH_SNAPSHOT_PATH`.
+`benchmark.yaml` declares pack identity and task roots, `agents.yaml` declares provider/model/harness identity, and each task owns its prompt, fixtures, resource policy, and evaluator declarations. Every run loads the complete pack into a content-addressed snapshot before provider preflight. Source edits after launch therefore affect only future runs. Snapshots default to `.agentbench/snapshots`; override that gitignored working location with `AGENTBENCH_SNAPSHOT_PATH`.
+
+The built-in evaluator types are `file`, `schema`, `command`, `http`, `browser`, `numeric`, and `model-judge`. Enabled weights must total exactly 100. Prerequisites form an acyclic graph: a failed prerequisite skips its dependents but independent checks continue. Assertion failures earn zero or partial points; evaluator infrastructure errors invalidate the primary score instead of being misreported as a bad submission.
+
+Command evaluators receive immutable `/benchmark` and `/submission` trees and may write only their result area. Network is disabled with a fresh Linux network namespace unless the benchmark explicitly enables it. HTTP and recorded-browser evaluators target verifier-owned outputs such as a preceding command evaluator's preview URL. Model judges receive only declared artifacts and retain provider/model, sampling, rubric, prompt, input digests, usage, raw redacted responses, and repair count as provenance.
 
 To discover additional packs, set `AGENTBENCH_BENCHMARK_ROOTS` to a platform-delimited list of pack roots. Use `;` on Windows and `:` on macOS/Linux:
 
@@ -106,6 +112,10 @@ Relative entries resolve from the `agentbench-live` project directory. Surroundi
 AgentBench invokes the local Codex CLI and uses its existing ChatGPT sign-in. It does not need an OpenAI API key and does not place ChatGPT credentials inside a Solari VM, environment file, artifact, or public JSON document.
 
 The ChatGPT subscription covers Codex according to the signed-in account’s current usage policy. Solari is separate: browser, sandbox, desktop, proxy, and captcha usage draw from the Solari account’s credit balance. Check the current rates and balance in the Solari console before starting a live matrix.
+
+For API-backed agents, set `credential` in `agents.yaml` to a reference such as `anthropic-main`; never put a secret in a benchmark file. Map references to environment variable names with `AGENTBENCH_CREDENTIAL_ENV_MAP` or store them in the gitignored local credential file selected by `AGENTBENCH_CREDENTIAL_FILE`. Dashboard APIs expose only reference, label, source, and configured/missing state.
+
+An `executable-jsonl` agent declares `options.command` as an argv array. Protocol version 1 exchanges one JSON object per line: the platform sends `initialize`, `plan`, `execute`, `tool_result`, and `cancel`; the harness replies with correlated `initialized`, `plan_result`, `event`, `tool_request`, `result`, or `error` messages. Lines are capped at 1 MiB, duplicate request IDs and malformed envelopes fail closed, and tool requests still pass through the benchmark's policy-bound broker.
 
 ## Commands
 
@@ -154,17 +164,9 @@ npm run agentbench -- demo:seed
 
 ## Evidence and scoring
 
-Every task is normalized to 100 points:
+Every enabled evaluator contributes its declared share of 100 points. Results preserve `passed`, `failed`, `error`, and `skipped` as distinct states. Evidence is redacted before SHA-256 hashing, deduplicated in `.agentbench/evidence/sha256`, and indexed by immutable per-run manifests. SQLite also stores normalized evaluator results, assertions, and references so failed and invalid-score runs remain inspectable.
 
-- Core functional behavior or finding: 45
-- Reproducible execution: 20
-- Methodological fidelity: 15
-- Evidence and provenance: 15
-- Completion within budget: 5
-
-The URL Shortener verifier performs a clean install and build, starts the application, submits a long URL through stable UI selectors, follows the generated short URL, checks the exact destination, retains a browser screenshot, and captures desktop evidence.
-
-The research verifier executes the exact Python CLI twice, requires byte-identical point output, recomputes sample means, sample variances, Pearson correlation, and target-circle error, and validates the comparison PNG. Failed runs remain valid, clickable scoreboard entries with a typed failure code and last successful stage.
+The URL Shortener tutorial performs static contract checks, starts the submitted application in a fresh network-enabled sandbox, and verifies its stable UI selectors in a recorded Solari browser. The research tutorial runs the exact seeded CLI twice without network access, checks byte reproducibility, recomputes sample means, sample variances, Pearson correlation, and ellipse RMSE, and scores each finding independently.
 
 ## Security model
 
@@ -207,8 +209,8 @@ This project was designed and implemented with Codex as an active engineering co
 
 ```text
 src/app/          Next.js dashboard, run API, and SSE routes
-src/components/   Scoreboard, run detail, evidence, and live timeline
-src/core/         Domain, agents, orchestration, Solari adapters, verifiers
+src/components/   Scoreboard, Studio, run detail, evidence, and live timeline
+src/core/         Authoring, providers, evaluators, evidence, orchestration, Solari
 src/server/       Server-only dependency composition
 schemas/          Generated RunPlan JSON Schema
 tests/            Unit, contract, integration, and UI tests

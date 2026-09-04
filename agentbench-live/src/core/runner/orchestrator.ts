@@ -20,7 +20,25 @@ import type {
 } from "./contracts";
 
 export class AgentBenchOrchestrator {
+  private readonly activeRuns = new Map<string, AbortController>();
   constructor(private readonly dependencies: OrchestratorDependencies) {}
+
+  cancel(id: string): RunRecord | undefined {
+    const run = this.dependencies.repository.get(id);
+    if (!run || run.stage === "completed" || run.stage === "failed" || run.stage === "cancelled") return run;
+    const error = Object.assign(new Error("Run cancelled by operator"), { name: "AgentBenchCancelled" });
+    const controller = this.activeRuns.get(id);
+    if (controller) {
+      controller.abort(error);
+      const event = this.dependencies.repository.appendEvent(id, { kind: "warning", payload: { message: "Cancellation requested" } });
+      this.dependencies.events.publish(id, event);
+      return run;
+    }
+    const cancelled = this.dependencies.repository.update(id, { stage: transition(run.stage, "cancelled"), completedAt: new Date().toISOString() });
+    const event = this.dependencies.repository.appendEvent(id, { kind: "stage", payload: { stage: "cancelled" } });
+    this.dependencies.events.publish(id, event);
+    return cancelled;
+  }
 
   async dryRun(request: RunRequest): Promise<DryRunReport> {
     const selection = await this.dependencies.resolveSelection(request);
@@ -113,6 +131,7 @@ export class AgentBenchOrchestrator {
     const { agentDefinition, taskDefinition, provider } =
       this.providerSelection(selection);
     const created = this.requireRun(id);
+    if (created.stage === "cancelled") return created;
     if (
       created.stage !== "loading" ||
       created.taskId !== task.id ||
@@ -123,6 +142,8 @@ export class AgentBenchOrchestrator {
       throw new Error(`Run ${id} is not the matching loading run`);
     }
     const now = this.dependencies.now ?? Date.now;
+    const runController = new AbortController();
+    this.activeRuns.set(id, runController);
     const startedMs = now();
     const deadlineAt = startedMs + task.budget.totalMs;
     const cleanupGraceMs = this.dependencies.cleanupGraceMs ?? 10_000;
@@ -177,7 +198,7 @@ export class AgentBenchOrchestrator {
         task: taskDefinition,
         snapshot: selection.snapshot,
         remainingMs,
-      }, planningController.signal)).catch((error: unknown) => {
+      }, AbortSignal.any([planningController.signal, runController.signal]))).catch((error: unknown) => {
         planningController.abort(error);
         throw error;
       });
@@ -199,6 +220,7 @@ export class AgentBenchOrchestrator {
         workspace,
         remainingMs,
         runWithCleanupGrace,
+        signal: runController.signal,
       });
       run = this.dependencies.repository.update(run.id, {
         resolvedModel: providerResult.resolvedModel,
@@ -223,6 +245,7 @@ export class AgentBenchOrchestrator {
             submission,
             snapshot: selection.snapshot,
             remainingMs,
+            signal: runController.signal,
           }),
         );
         run = this.move(run, "capturing");
@@ -304,6 +327,7 @@ export class AgentBenchOrchestrator {
       }
     }
 
+    this.activeRuns.delete(id);
     const finishedAtMs = now();
     const totalDurationMs = finishedAtMs - startedMs;
     const current = this.requireRun(run.id);
@@ -349,6 +373,12 @@ export class AgentBenchOrchestrator {
     const detail = redact(error instanceof Error ? error.message : String(error), {
       localRoots: workspace ? [workspace.root] : [],
     });
+    if (typeof error === "object" && error !== null && "name" in error && error.name === "AgentBenchCancelled") {
+      const updated = this.dependencies.repository.update(run.id, { stage: transition(run.stage, "cancelled"), completedAt: new Date(now()).toISOString(), durationMs });
+      const event = this.dependencies.repository.appendEvent(run.id, { kind: "stage", payload: { stage: "cancelled" } });
+      this.dependencies.events.publish(run.id, event);
+      return updated;
+    }
     const failureCode = this.failureCode(error, run.stage);
     const updated = this.dependencies.repository.update(run.id, {
       stage: transition(run.stage, "failed"),
@@ -442,6 +472,7 @@ export class AgentBenchOrchestrator {
     workspace: DisposableWorkspace;
     remainingMs(): number;
     runWithCleanupGrace<T>(label: string, operation: () => Promise<T>): Promise<T>;
+    signal: AbortSignal;
   }): Promise<ProviderExecutionResult> {
     const supervisor = new ResourceSupervisor();
     const sink = createAgentEventSink({
@@ -463,9 +494,11 @@ export class AgentBenchOrchestrator {
       remainingMs: input.remainingMs,
     });
     const controller = new AbortController();
+    const abort = () => controller.abort(input.signal.reason);
+    if (input.signal.aborted) abort(); else input.signal.addEventListener("abort", abort, { once: true });
     let execution: Awaited<ReturnType<AgentProvider["execute"]>> | undefined;
     try {
-      execution = await input.provider.execute({
+      execution = await this.abortable(input.provider.execute({
         agent: input.agent,
         task: input.task,
         snapshot: input.snapshot,
@@ -473,11 +506,11 @@ export class AgentBenchOrchestrator {
         workspace: input.workspace,
         tools,
         remainingMs: input.remainingMs,
-      }, sink, controller.signal);
+      }, sink, controller.signal), controller.signal);
       return await this.runWithDeadline(
         "provider execution",
         input.remainingMs,
-        () => execution!.result,
+        () => this.abortable(execution!.result, controller.signal),
       );
     } catch (error) {
       controller.abort(error);
@@ -496,6 +529,7 @@ export class AgentBenchOrchestrator {
       }
       throw error;
     } finally {
+      input.signal.removeEventListener("abort", abort);
       sink.close();
       try {
         for (const issue of await input.runWithCleanupGrace(
@@ -511,6 +545,18 @@ export class AgentBenchOrchestrator {
         );
       }
     }
+  }
+
+  private abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) return Promise.reject(signal.reason ?? Object.assign(new Error("Operation aborted"), { name: "AbortError" }));
+    return new Promise<T>((resolve, reject) => {
+      const abort = () => reject(signal.reason ?? Object.assign(new Error("Operation aborted"), { name: "AbortError" }));
+      signal.addEventListener("abort", abort, { once: true });
+      operation.then(
+        (value) => { signal.removeEventListener("abort", abort); resolve(value); },
+        (error) => { signal.removeEventListener("abort", abort); reject(error); },
+      );
+    });
   }
 
   private remainingMs(deadlineAt: number, now: () => number): number {

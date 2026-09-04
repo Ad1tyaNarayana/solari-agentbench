@@ -116,6 +116,14 @@ describe("AgentProviderRegistry", () => {
     ]);
   });
 
+  it("does not expose mutable nested provider schema state", () => {
+    const registry = new AgentProviderRegistry();
+    registry.register("fake", createProvider({ optionsSchema: { properties: { model: { type: "string" } } } }));
+    const first = registry.describeAll()[0].optionsSchema as { properties: { model: { type: string } } };
+    first.properties.model.type = "number";
+    expect((registry.describeAll()[0].optionsSchema as typeof first).properties.model.type).toBe("string");
+  });
+
   it("rejects a judge assignment to an incompatible provider", () => {
     const registry = new AgentProviderRegistry();
     registry.register("fake", createProvider());

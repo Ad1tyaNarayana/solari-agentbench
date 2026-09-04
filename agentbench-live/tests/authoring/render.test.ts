@@ -10,3 +10,10 @@ test("renders deterministic canonical files with stable final newlines", () => {
   expect(first.every((file) => file.contents.endsWith("\n") && !file.contents.endsWith("\n\n"))).toBe(true);
   expect(first.find((file) => file.path.endsWith("task.yaml"))?.contents).toContain("weight: 100");
 });
+
+test("renders editable rubric text as a separate immutable asset", () => {
+  const judged = structuredClone(draft); judged.tasks[0].evaluators = [{ id: "judge", type: "model-judge", weight: 100, enabled: true, prerequisites: [], config: { provider: "codex", rubric: "rubric.md", rubricText: "Judge correctness.", inputs: ["result.json"], sampling: {} } }];
+  const files = renderBenchmark(judged);
+  expect(files.find((file) => file.path === "tasks/task-one/rubric.md")?.contents).toBe("Judge correctness.\n");
+  expect(files.find((file) => file.path.endsWith("task.yaml"))?.contents).not.toContain("rubricText");
+});

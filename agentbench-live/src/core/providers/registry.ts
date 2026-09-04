@@ -24,7 +24,7 @@ function copyDescription(
   return {
     ...description,
     capabilities: { ...description.capabilities },
-    optionsSchema: { ...description.optionsSchema },
+    optionsSchema: structuredClone(description.optionsSchema),
   };
 }
 

@@ -64,6 +64,7 @@ export default async function RunDetailPage({
           <small>Last completed: {run.lastSuccessfulStage ?? "none"}</small>
         </aside>
       ) : null}
+      {run.stage === "cancelled" ? <aside className="failure-banner"><strong>Run cancelled</strong><p>The operator stopped this run. Completed evidence and cleanup records remain available.</p></aside> : null}
 
       <div className="run-layout">
         <div className="run-layout__main">

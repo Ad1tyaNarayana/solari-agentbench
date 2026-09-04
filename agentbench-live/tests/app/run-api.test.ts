@@ -23,6 +23,7 @@ function createApi(overrides: Partial<RunApiPort> = {}): RunApiPort {
     submit: vi.fn(async () => ({ kind: "run" as const, run: queuedRun })),
     listRuns: vi.fn(() => [queuedRun]),
     getRun: vi.fn(() => queuedRun),
+    cancelRun: vi.fn(() => queuedRun),
     listEvents: vi.fn(() => []),
     subscribe: vi.fn(() => () => undefined),
     ...overrides,

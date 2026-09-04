@@ -153,6 +153,7 @@ button, select { font: inherit; }
 .metadata-panel h2 { margin-bottom: 14px; font-size: 1rem; }
 .metadata-panel dd { font: .67rem var(--font-mono); text-align: right; }
 .live-stage { color: var(--muted); font-size: .78rem; }
+.cancel-run { margin-top: 14px; padding: 8px 11px; border: 1px solid var(--danger); background: transparent; color: var(--danger); cursor: pointer; }
 .live-stage span { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--signal); }
 .event-list { display: grid; gap: 8px; margin-top: 18px; list-style: none; }
 .event-list li { display: grid; grid-template-columns: 25px 60px 1fr; gap: 8px; font-size: .68rem; }

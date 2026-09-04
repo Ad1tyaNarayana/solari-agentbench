@@ -19,7 +19,8 @@ export class BrowserEvaluator implements Evaluator {
   readonly type = "browser" as const;
   constructor(private readonly browserService: Pick<BrowserService, "getReplayUrl">) {}
   validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
-  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, _signal: AbortSignal): Promise<EvaluatorOutcome> {
+  async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, signal: AbortSignal): Promise<EvaluatorOutcome> {
+    void signal;
     const config = Config.parse(definition.config);
     const browser = await context.resources.acquireBrowser(`evaluator:${definition.id}`, { recording: true });
     const page = await browser.newPage();

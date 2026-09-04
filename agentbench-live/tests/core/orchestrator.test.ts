@@ -479,6 +479,23 @@ test("aborts and cancels the provider once when execution exceeds the run deadli
   harness.repository.close();
 });
 
+test("operator cancellation settles a provider that ignores its abort signal", async () => {
+  const harness = createHarness({ generatorNeverResolves: true });
+  const created = await harness.orchestrator.create({ taskId: "url-shortener", agentId: "sol-low" });
+  const running = harness.orchestrator.runCreated(created.run.id, created.selection);
+  while (harness.generator.calls.length === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+
+  harness.orchestrator.cancel(created.run.id);
+  const completed = await Promise.race([
+    running,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("cancellation did not settle")), 500)),
+  ]);
+
+  expect(completed.stage).toBe("cancelled");
+  expect(harness.cancellationCalls).toBe(1);
+  harness.repository.close();
+});
+
 test("passes the exact selection created from the snapshot through preflight, planning, and generation", async () => {
   let sourcePrompt = "Prompt captured before the source edit.";
   let selected: RunSelection | undefined;

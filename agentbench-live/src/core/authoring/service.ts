@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { BenchmarkValidationError } from "@/core/benchmarks/types";
@@ -38,7 +38,8 @@ export class AuthoringService {
   }
   async readDraft(id: string): Promise<ReadDraftResult> {
     const root = await this.find(id); const loaded = await this.loader.load(root);
-    const draft: BenchmarkDraft = { schemaVersion: 1, id: loaded.definition.id, name: loaded.definition.name, version: loaded.definition.version, ...(loaded.definition.description ? { description: loaded.definition.description } : {}), defaults: { ...loaded.definition.defaults }, tasks: loaded.definition.tasks.map((task) => ({ id: task.id, name: task.name, prompt: task.prompt.replace(/\n$/, ""), fixtures: [...task.fixtures], allowedPrimitives: [...task.allowedPrimitives], planningRequired: task.planningRequired, resourceLimits: { ...task.resourceLimits }, submission: { directory: task.submission.directory, required: [...task.submission.required] }, evaluators: task.evaluators.map((item) => ({ ...item, prerequisites: [...item.prerequisites], config: { ...item.config } })) })), agents: loaded.definition.agents.map((agent) => ({ ...agent, harness: { ...agent.harness }, options: { ...agent.options } })) };
+    const tasks = await Promise.all(loaded.definition.tasks.map(async (task) => ({ id: task.id, name: task.name, prompt: task.prompt.replace(/\n$/, ""), fixtures: [...task.fixtures], allowedPrimitives: [...task.allowedPrimitives], planningRequired: task.planningRequired, resourceLimits: { ...task.resourceLimits }, submission: { directory: task.submission.directory, required: [...task.submission.required] }, evaluators: await Promise.all(task.evaluators.map(async (item) => { const config = { ...item.config }; const asset = item.type === "model-judge" ? config.rubric : item.type === "schema" ? config.schema : undefined; if (typeof asset === "string") { const textKey = item.type === "model-judge" ? "rubricText" : "schemaText"; config[textKey] = (await readFile(join(root, task.snapshotPrefix ?? `tasks/${task.id}`, asset), "utf8")).replace(/\n$/, ""); } return { ...item, prerequisites: [...item.prerequisites], config }; })) })));
+    const draft: BenchmarkDraft = { schemaVersion: 1, id: loaded.definition.id, name: loaded.definition.name, version: loaded.definition.version, ...(loaded.definition.description ? { description: loaded.definition.description } : {}), defaults: { ...loaded.definition.defaults }, tasks, agents: loaded.definition.agents.map((agent) => ({ ...agent, harness: { ...agent.harness }, options: { ...agent.options } })) };
     return { draft, revision: await readRevision(root), snapshotDigest: loaded.snapshot.digest };
   }
   async getPackRoot(id: string): Promise<string> { return this.find(id); }

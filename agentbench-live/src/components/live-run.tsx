@@ -9,7 +9,29 @@ type VisibleEvent = {
   payload: Record<string, unknown>;
 };
 
-const terminalStages = new Set<RunStage>(["completed", "failed"]);
+const terminalStages = new Set<RunStage>(["completed", "failed", "cancelled"]);
+const categories = ["Messages", "Local tools", "Solari resources", "Artifacts", "Usage", "Warnings", "Errors"] as const;
+type EventCategory = (typeof categories)[number];
+
+function normalizedKind(event: VisibleEvent): string {
+  return event.kind === "provider_event" && typeof event.payload.kind === "string" ? event.payload.kind : event.kind;
+}
+
+function categoryFor(event: VisibleEvent): EventCategory {
+  const kind = normalizedKind(event);
+  if (kind === "tool-request" || kind === "tool-result") return "Local tools";
+  if (kind === "resource-created" || kind === "resource-observation" || kind === "cleanup") return "Solari resources";
+  if (kind === "artifact") return "Artifacts";
+  if (kind === "usage") return "Usage";
+  if (kind === "warning") return "Warnings";
+  if (kind === "error") return "Errors";
+  return "Messages";
+}
+
+function eventSummary(event: VisibleEvent): string {
+  const inner = event.kind === "provider_event" && event.payload.payload && typeof event.payload.payload === "object" ? event.payload.payload as Record<string, unknown> : event.payload;
+  return String(inner.stage ?? inner.message ?? inner.code ?? inner.tool ?? inner.primitive ?? normalizedKind(event));
+}
 
 export function LiveRun({
   runId,
@@ -20,6 +42,7 @@ export function LiveRun({
 }) {
   const [stage, setStage] = useState(initialStage);
   const [events, setEvents] = useState<VisibleEvent[]>([]);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (terminalStages.has(initialStage)) return;
@@ -44,7 +67,7 @@ export function LiveRun({
         if (terminalStages.has(nextStage)) source.close();
       }
     };
-    for (const kind of ["stage", "log", "cleanup"]) {
+    for (const kind of ["stage", "log", "cleanup", "provider_event", "warning", "error", "artifact", "usage"]) {
       source.addEventListener(kind, receive);
     }
     return () => source.close();
@@ -57,12 +80,9 @@ export function LiveRun({
         <h2 id="live-heading">Live run</h2>
       </div>
       <p className="live-stage"><span aria-hidden="true" /> Current stage: <strong>{stage}</strong></p>
+      {!terminalStages.has(stage) ? <button className="cancel-run" disabled={cancelling} onClick={async () => { setCancelling(true); try { await fetch(`/api/runs/${runId}/cancel`, { method: "POST" }); } finally { setCancelling(false); } }}>{cancelling ? "Cancelling…" : "Cancel run"}</button> : null}
       {events.length > 0 ? (
-        <ol className="event-list">
-          {events.map((event) => (
-            <li key={event.id}><code>{event.id}</code><span>{event.kind}</span><strong>{String(event.payload.stage ?? event.payload.message ?? event.payload.code ?? "event")}</strong></li>
-          ))}
-        </ol>
+        <div className="event-groups">{categories.map((category) => { const grouped = events.filter((event) => categoryFor(event) === category); return grouped.length ? <section key={category}><h3>{category}</h3><ol className="event-list">{grouped.map((event) => <li key={event.id}><code>{event.id}</code><span>{normalizedKind(event)}</span><strong>{eventSummary(event)}</strong></li>)}</ol></section> : null; })}</div>
       ) : (
         <p className="empty-state">
           {terminalStages.has(stage)

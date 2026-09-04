@@ -6,8 +6,8 @@ import type { EvaluatorContext } from "@/core/evaluators/types";
 
 function fakeSandbox(exitCode = 0) {
   return {
-    id: "sandbox-1", mkdir: vi.fn(async (_path: string) => undefined), writeFile: vi.fn(async (_path: string, _contents: string | Uint8Array) => undefined),
-    readFile: vi.fn(async () => { throw Object.assign(new Error("missing"), { code: "ENOENT" }); }),
+    id: "sandbox-1", mkdir: vi.fn(async (path: string) => { void path; }), writeFile: vi.fn(async (path: string, contents: string | Uint8Array) => { void path; void contents; }),
+    readFile: vi.fn(async (): Promise<Uint8Array> => { throw Object.assign(new Error("missing"), { code: "ENOENT" }); }),
     exec: vi.fn(async () => ({ exitCode, stdout: "hello", stderr: "" })), start: vi.fn(), previewUrl: vi.fn(), kill: vi.fn(async () => undefined),
   };
 }
@@ -39,4 +39,9 @@ test("maps command exits to failed assertions and network infrastructure failure
   expect((await new CommandEvaluator().evaluate({ id: "cmd", type: "command", weight: 100, enabled: true, prerequisites: [], config: { argv: ["false"], network: true } }, await context(sandbox), new AbortController().signal)).status).toBe("failed");
   const unsupported = fakeSandbox(); unsupported.exec.mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "denied" });
   await expect(new CommandEvaluator().evaluate({ id: "cmd", type: "command", weight: 100, enabled: true, prerequisites: [], config: { argv: ["true"] } }, await context(unsupported), new AbortController().signal)).rejects.toThrow(/network isolation/i);
+});
+
+test("treats a malformed declared result file as an evaluator error", async () => {
+  const sandbox = fakeSandbox(); sandbox.readFile.mockResolvedValue(new TextEncoder().encode("not json"));
+  await expect(new CommandEvaluator().evaluate({ id: "cmd", type: "command", weight: 100, enabled: true, prerequisites: [], config: { argv: ["true"], network: true } }, await context(sandbox), new AbortController().signal)).rejects.toThrow(/json/i);
 });

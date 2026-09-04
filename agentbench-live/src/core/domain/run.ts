@@ -13,6 +13,7 @@ export type RunStage =
   | "verifying"
   | "capturing"
   | "completed"
+  | "cancelled"
   | "failed";
 
 export type FailureCode =

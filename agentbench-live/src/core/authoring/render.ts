@@ -13,7 +13,19 @@ export function renderBenchmark(draft: BenchmarkDraft): RenderedBenchmarkFile[] 
   ];
   parseBenchmarkFile(files[0].contents); parseAgentsFile(files[1].contents);
   for (const task of draft.tasks) {
-    const taskFile = { schemaVersion: 1, id: task.id, name: task.name, prompt: "prompt.md", fixtures: task.fixtures, resources: { allowed: task.allowedPrimitives, planningRequired: task.planningRequired, budget: task.resourceLimits }, submission: task.submission, evaluators: task.evaluators };
+    const evaluators = task.evaluators.map((evaluator) => {
+      const config = { ...evaluator.config };
+      if (evaluator.type === "model-judge" && typeof config.rubric === "string" && typeof config.rubricText === "string") {
+        files.push({ path: `tasks/${task.id}/${config.rubric}`, contents: newline(config.rubricText), language: "markdown" });
+        delete config.rubricText;
+      }
+      if (evaluator.type === "schema" && typeof config.schema === "string" && typeof config.schemaText === "string") {
+        files.push({ path: `tasks/${task.id}/${config.schema}`, contents: newline(config.schemaText), language: "json" });
+        delete config.schemaText;
+      }
+      return { ...evaluator, config };
+    });
+    const taskFile = { schemaVersion: 1, id: task.id, name: task.name, prompt: "prompt.md", fixtures: task.fixtures, resources: { allowed: task.allowedPrimitives, planningRequired: task.planningRequired, budget: task.resourceLimits }, submission: task.submission, evaluators };
     const contents = yaml(taskFile); parseTaskFile(contents);
     files.push({ path: `tasks/${task.id}/task.yaml`, contents, language: "yaml" });
     files.push({ path: `tasks/${task.id}/prompt.md`, contents: newline(task.prompt), language: "markdown" });
