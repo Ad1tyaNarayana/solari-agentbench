@@ -138,4 +138,4 @@ GREEN: same command — 2 files passed, 18 tests passed.
 - `agentbench-live/src/core/benchmarks/loader.ts`
 - `agentbench-live/tests/benchmarks/loader.test.ts`
 
-Fix implementation commit hash will be recorded after commit.
+Fix implementation commit: `d3d7a139b1bf80797170778a451c819673c82e04` (`fix(agentbench): scope evaluator assets by type`).
