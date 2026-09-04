@@ -30,6 +30,8 @@ import { createSolariServices } from "@/core/solari/clients";
 import { VerifierRegistry } from "@/core/verifiers/registry";
 import { EvaluationEngine } from "@/core/evaluators/engine";
 import { createBuiltinEvaluatorRegistry } from "@/core/evaluators/builtins";
+import { AuthoringService } from "@/core/authoring/service";
+import type { StudioApiPort } from "./authoring-contracts";
 import {
   RunApiError,
   type RunApiPort,
@@ -88,7 +90,7 @@ export function createRunSubmitter(input: {
   };
 }
 
-export function createServerContainer(): RunApiPort {
+export function createServerContainer(): RunApiPort & StudioApiPort {
   const configuredDatabasePath =
     process.env.AGENTBENCH_DATABASE_PATH ?? ".agentbench/agentbench.sqlite";
   const databasePath = resolve(
@@ -99,11 +101,14 @@ export function createServerContainer(): RunApiPort {
   reconcileAbandonedRuns(repository);
   const events = new RunEventBus();
   const queue = new RunQueue(1);
+  const snapshotRoot = resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH);
+  const writableRoot = resolve(process.env.AGENTBENCH_WRITABLE_ROOT ?? "benchmarks/local");
+  const authoring = new AuthoringService({ writableRoots: [writableRoot], snapshotsRoot: snapshotRoot });
+  const credentials = createDefaultCredentialStore();
+  const providers = createBuiltinProviderRegistry(credentials);
   const catalog = new BenchmarkCatalog(
     resolveBenchmarkRoots(process.env.AGENTBENCH_BENCHMARK_ROOTS),
-    new BenchmarkLoader(
-      resolveSnapshotRoot(process.env.AGENTBENCH_SNAPSHOT_PATH),
-    ),
+    new BenchmarkLoader(snapshotRoot),
   );
   let orchestrator: AgentBenchOrchestrator | undefined;
 
@@ -111,8 +116,6 @@ export function createServerContainer(): RunApiPort {
     if (orchestrator) return orchestrator;
     const solariApiKey = process.env.SOLARI_API_KEY ?? "";
     const services = createSolariServices(solariApiKey);
-    const credentials = createDefaultCredentialStore();
-    const providers = createBuiltinProviderRegistry(credentials);
     orchestrator = new AgentBenchOrchestrator({
       repository,
       events,
@@ -127,7 +130,13 @@ export function createServerContainer(): RunApiPort {
         credentials,
         evidenceRoot: resolve(".agentbench/evidence"),
       }),
-      resolveSelection: (request) => catalog.resolveSelection(request),
+      resolveSelection: async (request) => {
+        try { return await catalog.resolveSelection(request); }
+        catch (error) {
+          if (!request.benchmarkId || !(error instanceof BenchmarkSelectionError) || error.code !== "unknown_benchmark") throw error;
+          return new BenchmarkCatalog([await authoring.getPackRoot(request.benchmarkId)], new BenchmarkLoader(snapshotRoot)).resolveSelection(request);
+        }
+      },
       preflight: async () => undefined,
       createWorkspace,
       packageSubmission: (workspace) =>
@@ -149,10 +158,20 @@ export function createServerContainer(): RunApiPort {
     getRun: (id) => repository.get(id),
     listEvents: (runId) => repository.listEvents(runId),
     subscribe: (runId, listener) => events.subscribe(runId, listener),
+    listBenchmarks: async () => {
+      const builtIn = (await catalog.discover()).map((item) => ({ id: item.definition.id, name: item.definition.name, version: item.definition.version, writable: false }));
+      return [...builtIn, ...await authoring.list()].sort((a, b) => a.id.localeCompare(b.id));
+    },
+    readBenchmark: (id) => authoring.readDraft(id),
+    previewBenchmark: (draft) => authoring.preview(draft),
+    createBenchmark: (input) => authoring.create(input),
+    saveBenchmark: (input) => authoring.save(input),
+    listProviders: () => providers.describeAll(),
+    listCredentials: () => credentials.listMetadata(),
   };
 }
 
-export function getServerContainer(): RunApiPort {
+export function getServerContainer(): RunApiPort & StudioApiPort {
   return getOrCreateGlobalServerContainer(
     "agentbench-live-server-container-v1",
     createServerContainer,
