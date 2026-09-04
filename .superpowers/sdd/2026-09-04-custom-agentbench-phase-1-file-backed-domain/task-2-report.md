@@ -139,3 +139,74 @@ GREEN: same command — 2 files passed, 18 tests passed.
 - `agentbench-live/tests/benchmarks/loader.test.ts`
 
 Fix implementation commit: `d3d7a139b1bf80797170778a451c819673c82e04` (`fix(agentbench): scope evaluator assets by type`).
+
+## Fix Round 4/5
+
+### Finding addressed
+
+Added positive regression coverage proving successful benchmark loading and exact semantic snapshot inclusion for each previously uncovered evaluator asset declaration:
+
+- schema evaluator `config.schema`;
+- model-judge evaluator `config.rubric`;
+- command evaluator `config.script`;
+- command evaluator `config.fixture`.
+
+The existing positive command-argv-basename and `config.expected` assertions, plus all cross-type negative assertions, remain unchanged. Each new test also asserts the normalized evaluator configuration so the load-success boundary and snapshot-copy boundary are both covered.
+
+### TDD / characterization evidence
+
+The tests were added before any production change. The requested initial command was attempted exactly as specified:
+
+`npm test -- tests/benchmarks/loader.test.ts tests/benchmarks/snapshot.test.ts`
+
+Result: command could not start (exit 1) because `npm` was not available on this shell's `PATH`:
+
+```text
+npm: The term 'npm' is not recognized as a name of a cmdlet, function, script file, or executable program.
+```
+
+The repository's available `pnpm` shim was then attempted:
+
+`pnpm --dir agentbench-live exec vitest run tests/benchmarks/loader.test.ts tests/benchmarks/snapshot.test.ts`
+
+Result: command could not start (exit 1) until the bundled Node runtime was placed on `PATH`:
+
+```text
+'node' is not recognized as an internal or external command,
+operable program or batch file.
+```
+
+After resolving the Codex bundled workspace dependencies, all verification commands below used this exact prelude:
+
+`$env:PATH = 'C:\Users\Admin\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;C:\Users\Admin\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback;' + $env:PATH`
+
+Test-first characterization command:
+
+`pnpm --dir agentbench-live exec vitest run tests/benchmarks/loader.test.ts tests/benchmarks/snapshot.test.ts`
+
+Result: 2 test files passed, 22 tests passed. The four new tests passed immediately because Fix Round 3 already implemented the exact per-evaluator dispatch. This round therefore closes the reported assertion/coverage gap rather than an implementation failure; no RED production failure was fabricated and no production code was changed.
+
+### Covering verification
+
+- `pnpm --dir agentbench-live exec vitest run tests/benchmarks tests/core/security.test.ts`
+  - Exit 0: 4 test files passed, 50 tests passed.
+- `pnpm --dir agentbench-live test`
+  - Exit 0: 25 test files passed, 148 tests passed, 1 skipped (149 total).
+- `pnpm --dir agentbench-live exec next typegen`
+  - Exit 0: `Generating route types...` / `Types generated successfully`.
+- `pnpm --dir agentbench-live exec tsc --noEmit`
+  - Exit 0 with no output.
+- `git diff --check`
+  - Exit 0; only Git's existing LF-to-CRLF working-copy notice was emitted.
+
+### Files changed
+
+- `agentbench-live/tests/benchmarks/loader.test.ts`
+
+No production files changed.
+
+### Self-review
+
+Reviewed the final test diff against the open finding and binding spec. Each test uses a real temporary benchmark pack and real snapshot filesystem bytes, contains literal expected values, and would fail if its corresponding evaluator-type/key dispatch were removed. Existing positive and negative asset-dispatch coverage remains intact. No concerns remain within Task 2 scope.
+
+Fix coverage commit: `0415496` (`test(agentbench): cover evaluator snapshot assets`).
