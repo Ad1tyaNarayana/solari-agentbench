@@ -332,8 +332,13 @@ interface AgentProvider {
   preflight(input: ProviderPreflightInput): Promise<ProviderPreflightResult>
   plan(input: ProviderPlanInput, signal: AbortSignal): Promise<RunPlan>
   execute(input: ProviderExecutionInput, sink: AgentEventSink,
-          signal: AbortSignal): Promise<ProviderExecutionResult>
+          signal: AbortSignal): Promise<ProviderExecution>
   cancel(run: ProviderRunHandle): Promise<void>
+}
+
+type ProviderExecution = {
+  handle: ProviderRunHandle
+  result: Promise<ProviderExecutionResult>
 }
 ```
 
@@ -344,7 +349,8 @@ interface AgentProvider {
   must not provision billable resources.
 - `plan` returns the requested Solari primitives and justification. Providers
   that cannot plan natively use the platform's constrained planning prompt.
-- `execute` works in a disposable workspace and emits normalized events.
+- `execute` starts work in a disposable workspace, returns a live handle plus a
+  result promise, and emits normalized events while that result is pending.
 - `cancel` stops the harness and any provider-owned child processes. The
   orchestrator remains responsible for final resource reconciliation.
 
