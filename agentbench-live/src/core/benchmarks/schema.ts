@@ -94,7 +94,6 @@ const evaluationPolicySchema = z
     allowModelJudgeMajority: z.boolean(),
   })
   .strict();
-
 const taskSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -263,7 +262,6 @@ function validateModelJudgeAuthority(
     ]);
   }
 }
-
 function validateEvaluatorReferences(
   items: EvaluatorDefinition[],
   evaluatorsById: ReadonlyMap<string, EvaluatorDefinition>,
