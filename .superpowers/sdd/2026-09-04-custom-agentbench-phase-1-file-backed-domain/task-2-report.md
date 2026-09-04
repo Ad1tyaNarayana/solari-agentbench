@@ -79,4 +79,4 @@ GREEN: same command after implementation — 2 files passed, 13 tests passed.
 
 No remaining concerns within Task 2 scope. The explicit evaluator asset-key contract intentionally avoids treating arbitrary evaluator configuration strings as files.
 
-Fix commit hash is recorded in the next commit update.
+Fix implementation commit: `c8a0fad5c816b444d7b6af393a7f991f97d6ff79` (`fix(agentbench): harden benchmark asset loading`).
