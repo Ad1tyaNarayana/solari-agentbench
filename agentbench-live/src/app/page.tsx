@@ -1,7 +1,7 @@
 import { RunLauncher } from "@/components/run-launcher";
-import { Scoreboard } from "@/components/scoreboard";
+import { buildScoreboardDimensions, Scoreboard } from "@/components/scoreboard";
 import { demoRuns } from "@/core/demo/seed";
-import { agents, listTasks } from "@/core/tasks/registry";
+import { agents as tutorialAgents, listTasks } from "@/core/tasks/registry";
 import { getServerContainer } from "@/server/container";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,11 @@ export default function Home() {
   const persistedRuns = getServerContainer().listRuns();
   const demoMode = persistedRuns.length === 0;
   const runs = demoMode ? demoRuns : [...persistedRuns, ...demoRuns];
+  const scoreboard = buildScoreboardDimensions({
+    agents: [...tutorialAgents],
+    tasks,
+    runs: persistedRuns,
+  });
   const completed = runs.filter((run) => run.stage === "completed").length;
   const evidenceItems = runs.reduce(
     (count, run) => count + Object.keys(run.evidence ?? {}).length,
@@ -45,7 +50,7 @@ export default function Home() {
         <aside className="hero__proof" aria-label="Benchmark summary">
           <p>{demoMode ? "Representative demo matrix" : "Equal prompt. Equal budget."}</p>
           <dl>
-            <div><dt>Matrix</dt><dd>{agents.length} × {tasks.length}</dd></div>
+            <div><dt>Matrix</dt><dd>{scoreboard.agents.length} × {scoreboard.tasks.length}</dd></div>
             <div><dt>Completed</dt><dd>{completed.toString().padStart(2, "0")}</dd></div>
             <div><dt>Evidence fields</dt><dd>{evidenceItems.toString().padStart(2, "0")}</dd></div>
           </dl>
@@ -58,11 +63,11 @@ export default function Home() {
           <div><p className="eyebrow">{demoMode ? "Seeded public demonstration" : "Latest verified matrix"}</p><h2>Scoreboard</h2></div>
           <p>Each cell links to its complete execution trace. Missing runs stay visibly missing.</p>
         </div>
-        <Scoreboard agents={[...agents]} tasks={tasks} runs={runs} />
+        <Scoreboard agents={scoreboard.agents} tasks={scoreboard.tasks} runs={runs} />
       </section>
 
       <section className="launch-section shell" id="launch">
-        <RunLauncher agents={[...agents]} tasks={tasks} />
+        <RunLauncher agents={[...tutorialAgents]} tasks={tasks} />
       </section>
 
       <section className="method-strip">

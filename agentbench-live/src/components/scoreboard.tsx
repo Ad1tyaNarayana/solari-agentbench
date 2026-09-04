@@ -2,6 +2,55 @@ import type { AgentConfig, RunRecord } from "@/core/domain/run";
 import type { TaskManifest } from "@/core/domain/task";
 import { RunCard } from "./run-card";
 
+type ScoreboardAgent = Pick<AgentConfig, "id" | "label"> & {
+  model?: string;
+  reasoningEffort?: AgentConfig["reasoningEffort"];
+  providerId?: string;
+  harnessId?: string;
+  harnessVersion?: string;
+};
+
+type ScoreboardTask = Pick<TaskManifest, "id" | "title">;
+
+export function buildScoreboardDimensions(input: {
+  agents: ScoreboardAgent[];
+  tasks: ScoreboardTask[];
+  runs: RunRecord[];
+}): { agents: ScoreboardAgent[]; tasks: ScoreboardTask[] } {
+  const agents = [...input.agents];
+  const tasks = [...input.tasks];
+  const knownAgentIds = new Set(agents.map((agent) => agent.id));
+  const knownTaskIds = new Set(tasks.map((task) => task.id));
+  const latestByAgent = new Map<string, RunRecord>();
+
+  for (const run of input.runs) {
+    if (!knownTaskIds.has(run.taskId)) {
+      knownTaskIds.add(run.taskId);
+      tasks.push({ id: run.taskId, title: run.taskId });
+    }
+    const latest = latestByAgent.get(run.agentId);
+    if (!latest || run.createdAt.localeCompare(latest.createdAt) > 0) {
+      latestByAgent.set(run.agentId, run);
+    }
+  }
+
+  for (const [agentId, run] of latestByAgent) {
+    if (knownAgentIds.has(agentId)) continue;
+    knownAgentIds.add(agentId);
+    agents.push({
+      id: agentId,
+      label: agentId,
+      model: run.model,
+      reasoningEffort: run.reasoningEffort,
+      providerId: run.providerId,
+      harnessId: run.harnessId,
+      harnessVersion: run.harnessVersion,
+    });
+  }
+
+  return { agents, tasks };
+}
+
 function latestRun(
   runs: RunRecord[],
   agentId: string,
@@ -17,8 +66,8 @@ export function Scoreboard({
   tasks,
   runs,
 }: {
-  agents: AgentConfig[];
-  tasks: TaskManifest[];
+  agents: ScoreboardAgent[];
+  tasks: ScoreboardTask[];
   runs: RunRecord[];
 }) {
   return (
@@ -40,6 +89,15 @@ export function Scoreboard({
         </thead>
         <tbody>
           {agents.map((agent) => {
+            const harness = agent.harnessId
+              ? `${agent.harnessId}${agent.harnessVersion ? ` · v${agent.harnessVersion}` : ""}`
+              : undefined;
+            const identity = [
+              agent.model,
+              agent.reasoningEffort,
+              agent.providerId,
+              harness,
+            ].filter(Boolean).join(" · ");
             const agentRuns = tasks.map((task) =>
               latestRun(runs, agent.id, task.id),
             );
@@ -51,7 +109,7 @@ export function Scoreboard({
               <tr key={agent.id}>
                 <th scope="row">
                   <span>{agent.label}</span>
-                  <small>{agent.model} · {agent.reasoningEffort}</small>
+                  <small>{identity || "Identity not recorded"}</small>
                 </th>
                 {agentRuns.map((run, index) => (
                   <td key={tasks[index].id}>
