@@ -17,6 +17,7 @@ import type { EvaluationEnginePort } from "@/core/evaluators/engine";
 
 export type RunRequest = {
   benchmarkId?: string;
+  benchmarkDigest?: string;
   taskId: string;
   agentId: string;
 };

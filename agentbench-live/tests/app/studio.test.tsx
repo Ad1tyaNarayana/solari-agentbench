@@ -1,0 +1,3 @@
+import { render, screen } from "@testing-library/react";
+import { StudioShell } from "@/components/studio/studio-shell";
+test("renders the complete three-pane authoring frame", () => { render(<StudioShell />); expect(screen.getByRole("heading", { name: /benchmark studio/i, level: 1 })).toBeInTheDocument(); for (const step of ["Basics", "Tasks", "Environment", "Evaluators", "Agents", "Review"]) expect(screen.getByRole("button", { name: step })).toBeInTheDocument(); expect(screen.getByRole("region", { name: /generated files/i })).toBeInTheDocument(); expect(screen.getByRole("status")).toHaveTextContent(/unsaved|checking|valid/i); });

@@ -4,6 +4,7 @@ import type { RunApiPort } from "@/server/contracts";
 const submitSchema = z
   .object({
     benchmarkId: z.string().min(1).optional(),
+    benchmarkDigest: z.string().min(1).optional(),
     taskId: z.string().min(1),
     agentId: z.string().min(1),
     dryRun: z.boolean().optional(),
@@ -39,7 +40,7 @@ export async function handlePostRuns(
       typeof error.code === "string"
         ? error.code
         : "submission_failed";
-    const status = code === "preflight_failed" ? 503 : 400;
+    const status = code === "preflight_failed" ? 503 : code === "benchmark_conflict" ? 409 : 400;
     return Response.json({ error: code }, { status });
   }
 }

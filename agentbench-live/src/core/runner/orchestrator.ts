@@ -74,6 +74,9 @@ export class AgentBenchOrchestrator {
   async create(request: RunRequest): Promise<CreatedRun> {
     const selection = await this.dependencies.resolveSelection(request);
     const { benchmark, snapshot, task, agent } = selection;
+    if (request.benchmarkDigest && request.benchmarkDigest !== snapshot.digest) {
+      throw Object.assign(new Error("Benchmark snapshot changed; reload before launching"), { code: "benchmark_conflict" });
+    }
     const agentDefinition = benchmark.agents.find(
       (candidate) => candidate.id === agent.id,
     );
