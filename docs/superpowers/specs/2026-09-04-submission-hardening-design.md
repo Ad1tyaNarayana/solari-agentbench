@@ -40,23 +40,27 @@ The two bundled tutorial tasks remain 100% deterministic. Their documentation wi
 
 ## External paper-replication pack
 
-Add `examples/packs/fisher-iris-reproduction`, intentionally outside the bundled tutorial root. The pack cites R. A. Fisher’s 1936 paper, “The Use of Multiple Measurements in Taxonomic Problems,” DOI `10.1111/j.1469-1809.1936.tb02137.x`, and the UCI Iris dataset, DOI `10.24432/C56C76`. The dataset is included with its UCI attribution and CC BY 4.0 notice.
+Add `examples/packs/raft-consensus-reproduction`, intentionally outside the bundled tutorial root. The pack cites Diego Ongaro and John Ousterhout’s 2014 USENIX ATC Best Paper, “In Search of an Understandable Consensus Algorithm (Extended Version).” The paper and its bibliography are linked rather than redistributed.
 
-The task asks an agent to implement a dependency-light reproduction that:
+The task asks an agent to build a dependency-light, deterministic five-node Raft simulator that reproduces the paper’s core safety and recovery claims under controlled faults. The submission contract is language-neutral: an executable `run` entry point accepts a scenario JSON path, an integer seed, and an output directory. It must emit canonical `summary.json` and `trace.jsonl` files plus a static HTML trace viewer. The simulator must implement randomized leader election, heartbeats, replicated logs, majority commit, leader failure, node restart, and bidirectional network partitions. It does not need persistence across operating-system process restarts, membership changes, or log compaction.
 
-- loads the pinned 150-row, four-feature Iris fixture;
-- derives a linear discriminant projection from the training data rather than hard-coding labels;
-- reports class counts, discriminant coefficients, confusion matrix, accuracy, and the setosa-versus-rest margin;
-- emits a methodology document and machine-readable provenance;
-- produces byte-stable results when run twice with the declared seed.
+The pinned scenario corpus covers stable election, leader failover, minority isolation, majority recovery, and divergent-follower log repair. Every trace records logical tick, message or state-transition type, term, node, role, commit index, and log digest. Runs use a logical clock and seeded pseudo-randomness; wall-clock timestamps are forbidden from canonical output. The methodology document identifies the implemented Raft subset and maps each checked invariant to the corresponding paper section.
 
-Evaluation is 100% deterministic. File and schema evaluators validate the submission contract. A network-disabled command evaluator executes the submitted program twice against the pinned fixture, checks byte equality, independently recomputes the declared metrics, and publishes normalized outputs. Numeric evaluators check the pinned observation/class counts, a minimum leave-one-out accuracy of 0.96, and a strictly positive setosa-versus-rest margin. No model judge contributes points.
+Evaluation is 100% deterministic. File and schema evaluators validate the submission contract. A network-disabled command evaluator runs every pinned scenario twice with its declared seed, checks byte equality, and independently derives these invariants from the emitted trace and summaries:
+
+- election safety: at most one leader is elected in a term;
+- log matching: equal index-and-term entries imply identical prefixes;
+- leader completeness: every committed entry is present in every later-term leader;
+- state-machine safety: nodes never apply different commands at the same log index;
+- quorum behavior: a minority partition cannot commit a new entry, while a recovered majority can elect a leader and resume commits within the scenario’s logical-tick bound.
+
+The evaluator rejects summaries that claim an invariant not supported by the trace, requires all pinned scenarios to reach their expected terminal state, and publishes normalized invariant and liveness results as evaluator-owned evidence. A recorded browser evaluator opens the static trace viewer, selects the failover and partition scenarios, and asserts that term, leader, partition, commit-index, and invariant-status elements match the command evaluator’s normalized results. No model judge contributes points, and the optional desktop resource is not required by this pack.
 
 The pack is loaded by adding its directory to `AGENTBENCH_BENCHMARK_ROOTS`; it does not receive a special registry path. This proves external discovery rather than adding a third built-in task.
 
 ## Certification artifact
 
-Add `agentbench certify --benchmark-root <path> --submission <path> --output <path>`. Certification loads the pack through `BenchmarkLoader`, creates the normal content-addressed snapshot, validates the provider/evaluator declarations, packages the supplied submission with the production policy, and runs the production `EvaluationEngine`. Because the Fisher evaluator executes code, certificate creation requires configured Solari services; `--validate-only` performs snapshot and policy validation without provisioning but does not create a certificate. A completed certification writes a canonical JSON report containing:
+Add `agentbench certify --benchmark-root <path> --submission <path> --output <path>`. Certification loads the pack through `BenchmarkLoader`, creates the normal content-addressed snapshot, validates the provider/evaluator declarations, packages the supplied submission with the production policy, and runs the production `EvaluationEngine`. Because the Raft evaluator executes code and inspects its trace viewer, certificate creation requires configured Solari sandbox and browser services; `--validate-only` performs snapshot and policy validation without provisioning but does not create a certificate. A completed certification writes a canonical JSON report containing:
 
 - schema version and certification mode;
 - benchmark, task, and agent IDs;
@@ -67,13 +71,13 @@ Add `agentbench certify --benchmark-root <path> --submission <path> --output <pa
 - `solariLive: true`, set only after real Solari resource creation and cleanup were observed;
 - creation timestamp and repository commit.
 
-The committed Fisher proof is labeled `live-reference-certification`. Unit and integration tests may use fake services, but their output can never be written as a public certificate. The public artifact must not claim an outside user or agent execution; it certifies an externally loaded pack and reference submission through live evaluator infrastructure.
+The committed Raft proof is labeled `live-reference-certification`. Unit and integration tests may use fake services, but their output can never be written as a public certificate. The public artifact must not claim an outside user or agent execution; it certifies an externally loaded pack and reference submission through live evaluator infrastructure.
 
 ## Studio and production-path proof
 
 Studio remains a canonical-file editor, not a separate benchmark runtime. Create, save, reload, dry-run, and run use the same `AuthoringService`, `BenchmarkLoader`, `BenchmarkCatalog`, `AgentBenchOrchestrator`, and `EvaluationEngine` as CLI-loaded packs.
 
-The current Studio round-trip test stops at `EvaluationEngine`. It will be extended with a deterministic fake provider and fake Solari services to launch the saved pack through `AgentBenchOrchestrator`, then assert that the persisted run’s benchmark digest equals the digest returned by Studio save and that normalized evaluator/evidence records are present. A second integration test loads the Fisher pack solely through an external root and certifies a reference submission.
+The current Studio round-trip test stops at `EvaluationEngine`. It will be extended with a deterministic fake provider and fake Solari services to launch the saved pack through `AgentBenchOrchestrator`, then assert that the persisted run’s benchmark digest equals the digest returned by Studio save and that normalized evaluator/evidence records are present. A second integration test loads the Raft pack solely through an external root and certifies a reference submission.
 
 ## User experience and documentation
 
@@ -96,6 +100,5 @@ The release gate is the complete test suite, TypeScript check, ESLint with zero 
 
 ## Sources
 
-- Fisher, R. A. (1936), “The Use of Multiple Measurements in Taxonomic Problems,” DOI: https://doi.org/10.1111/j.1469-1809.1936.tb02137.x
-- Rothamsted Research institutional copy: https://repository.rothamsted.ac.uk/item/9914w/the-use-of-multiple-measurements-in-taxonomic-problems
-- UCI Iris dataset and license: https://archive.ics.uci.edu/dataset/53/iris
+- Ongaro, Diego, and John Ousterhout (2014), “In Search of an Understandable Consensus Algorithm (Extended Version),” USENIX ATC ’14: https://www.usenix.org/conference/atc14/technical-sessions/presentation/ongaro
+- Official paper PDF: https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf
