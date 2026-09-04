@@ -15,6 +15,7 @@ export class EvaluatorRuntime implements EvaluatorResourcePort {
     evaluatorId: string;
     callback: () => Promise<EvaluatorFinalizerOutcome>;
   }> = [];
+  private readonly earlyCleanupIssues: CleanupIssue[] = [];
   private finalizersPromise: Promise<EvaluatorFinalizerResult[]> | undefined;
   constructor(private readonly services: SolariServices) {}
 
@@ -29,6 +30,13 @@ export class EvaluatorRuntime implements EvaluatorResourcePort {
     this.supervisor.trackBrowser(browser);
     this.created.browsers.add(browser.id);
     return browser;
+  }
+  async releaseBrowser(id: string): Promise<void> {
+    const issue = await this.supervisor.closeBrowser(id);
+    if (issue) {
+      this.earlyCleanupIssues.push(issue);
+      throw new Error(issue.detail);
+    }
   }
   async acquireDesktop(_label: string, options?: { timeoutMs?: number }): Promise<DesktopHandle> {
     const desktop = await this.services.desktop.create(options);
@@ -56,7 +64,7 @@ export class EvaluatorRuntime implements EvaluatorResourcePort {
   async dispose(): Promise<void> { await this.disposeWithAudit(); }
   async disposeWithAudit(): Promise<EvaluationResourceAudit> {
     const cleanupIssues = await this.supervisor.cleanup();
-    return this.audit(cleanupIssues);
+    return this.audit([...this.earlyCleanupIssues, ...cleanupIssues]);
   }
 
   private async performFinalizers(): Promise<EvaluatorFinalizerResult[]> {

@@ -1,16 +1,24 @@
 import { BrowserEvaluator } from "@/core/evaluators/browser";
 import type { EvaluatorContext } from "@/core/evaluators/types";
 
-test("runs the recorded action DSL and retains screenshot and replay evidence", async () => {
+test("releases the recorded browser and polls until replay evidence is ready", async () => {
   const page = { goto: vi.fn(), fill: vi.fn(), click: vi.fn(), textContent: vi.fn(async () => "Welcome Aditya"), waitForUrl: vi.fn(), url: vi.fn(() => "https://app.test/done"), screenshot: vi.fn(async () => new Uint8Array([1, 2])) };
   const browser = { id: "browser-1", newPage: vi.fn(async () => page), close: vi.fn() };
   const putBytes = vi.fn(async (input) => ({ ...input, digest: "b".repeat(64), size: 2, runId: "r", taskId: "t", createdAt: "now", redacted: true }));
-  const context = { resources: { acquireBrowser: vi.fn(async () => browser), getOutput: () => "https://app.test" }, evidence: { putBytes } } as unknown as EvaluatorContext;
-  const outcome = await new BrowserEvaluator({ getReplayUrl: vi.fn(async () => ({ url: "https://replay.test", expiresInSeconds: 60 })) }).evaluate({ id: "browser", type: "browser", weight: 100, enabled: true, prerequisites: ["serve"], config: { actions: [
+  const lifecycle: string[] = [];
+  const releaseBrowser = vi.fn(async () => { lifecycle.push("release"); });
+  const context = { resources: { acquireBrowser: vi.fn(async () => browser), releaseBrowser, getOutput: () => "https://app.test" }, evidence: { putBytes }, remainingMs: () => 60_000 } as unknown as EvaluatorContext;
+  const getReplayUrl = vi.fn()
+    .mockRejectedValueOnce(new Error("No replay available"))
+    .mockResolvedValueOnce({ url: "https://replay.test", expiresInSeconds: 60 });
+  const outcome = await new BrowserEvaluator({ getReplayUrl }, async (ms) => { lifecycle.push(`wait:${ms}`); }).evaluate({ id: "browser", type: "browser", weight: 100, enabled: true, prerequisites: ["serve"], config: { actions: [
     { type: "goto", url: { fromEvaluator: "serve", output: "previewUrl" } }, { type: "fill", selector: "#name", value: "Aditya" }, { type: "click", selector: "button" },
     { type: "assertText", selector: "main", contains: "Aditya" }, { type: "assertUrl", matches: "/done$" }, { type: "screenshot", role: "result" },
   ] } }, context, new AbortController().signal);
   expect(context.resources.acquireBrowser).toHaveBeenCalledWith("evaluator:browser", { recording: true });
+  expect(releaseBrowser).toHaveBeenCalledWith("browser-1");
+  expect(lifecycle.slice(0, 2)).toEqual(["wait:2000", "release"]);
+  expect(getReplayUrl).toHaveBeenCalledTimes(2);
   expect(outcome).toMatchObject({ status: "passed", metadata: { replayUrl: "https://replay.test" } });
   expect(outcome.assertions).toHaveLength(2);
   expect(outcome.evidence[0].external?.url).toBe("https://replay.test");
@@ -22,9 +30,11 @@ test("resolves expected text from a prerequisite evaluator output", async () => 
   const context = {
     resources: {
       acquireBrowser: vi.fn(async () => browser),
+      releaseBrowser: vi.fn(async () => undefined),
       getOutput: (_evaluatorId: string, key: string) => key === "previewUrl" ? "https://app.test" : "3",
     },
     evidence: { putBytes: vi.fn() },
+    remainingMs: () => 60_000,
   } as unknown as EvaluatorContext;
   const outcome = await new BrowserEvaluator({ getReplayUrl: vi.fn(async () => ({ url: "https://replay.test", expiresInSeconds: 60 })) }).evaluate({
     id: "browser",

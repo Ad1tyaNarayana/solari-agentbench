@@ -17,7 +17,11 @@ const Config = z.object({ actions: z.array(Action).min(1).max(500) }).strict();
 
 export class BrowserEvaluator implements Evaluator {
   readonly type = "browser" as const;
-  constructor(private readonly browserService: Pick<BrowserService, "getReplayUrl">) {}
+  constructor(
+    private readonly browserService: Pick<BrowserService, "getReplayUrl">,
+    private readonly sleep: (milliseconds: number) => Promise<void> =
+      (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  ) {}
   validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
   async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, signal: AbortSignal): Promise<EvaluatorOutcome> {
     void signal;
@@ -34,11 +38,31 @@ export class BrowserEvaluator implements Evaluator {
       else if (action.type === "assertUrl") { const observed = page.url(); assertions.push({ id: `${definition.id}.${index + 1}`, passed: new RegExp(action.matches).test(observed), summary: "Current URL matches", expected: action.matches, observed }); }
       else evidence.push(await context.evidence.putBytes({ evaluatorId: definition.id, mimeType: "image/png", role: action.role, producer: "evaluator", bytes: await page.screenshot() }));
     }
-    const replay = await this.browserService.getReplayUrl(browser.id);
+    const finalUrl = page.url();
+    await this.sleep(Math.min(2_000, Math.max(0, context.remainingMs())));
+    await context.resources.releaseBrowser(browser.id);
+    const replay = await this.pollReplay(browser.id, context.remainingMs);
     const external = { url: replay.url, expiresAt: new Date(Date.now() + replay.expiresInSeconds * 1_000).toISOString() };
     if (evidence[0]) evidence[0] = { ...evidence[0], external };
     const passedCount = assertions.filter((item) => item.passed).length;
     const passed = passedCount === assertions.length;
-    return { status: passed ? "passed" : "failed", earnedFraction: assertions.length ? passedCount / assertions.length : 1, summary: assertions.length ? `${passedCount}/${assertions.length} browser assertions passed` : "Browser actions completed", assertions, evidence, outputs: { finalUrl: page.url() }, metadata: { replayUrl: replay.url, replayExpiresAt: external.expiresAt, recording: true } };
+    return { status: passed ? "passed" : "failed", earnedFraction: assertions.length ? passedCount / assertions.length : 1, summary: assertions.length ? `${passedCount}/${assertions.length} browser assertions passed` : "Browser actions completed", assertions, evidence, outputs: { finalUrl }, metadata: { replayUrl: replay.url, replayExpiresAt: external.expiresAt, recording: true } };
+  }
+
+  private async pollReplay(
+    browserId: string,
+    remainingMs: () => number,
+  ): Promise<{ url: string; expiresInSeconds: number }> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      try {
+        return await this.browserService.getReplayUrl(browserId);
+      } catch {
+        if (attempt === 9 || remainingMs() <= 0) break;
+        await this.sleep(Math.min(3_000, Math.max(1, remainingMs())));
+      }
+    }
+    throw new Error(
+      "Browser replay unavailable after release and bounded polling",
+    );
   }
 }

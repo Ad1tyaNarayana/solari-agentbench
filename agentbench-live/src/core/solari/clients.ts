@@ -142,14 +142,20 @@ class SandboxHandleAdapter implements SandboxHandle {
     return this.sandbox.commands.run(command, { args, ...options });
   }
 
-  start(command: string, args: string[] = [], options: { cwd?: string; timeoutMs?: number; env?: Record<string, string> } = {}) {
-    return this.sandbox.commands.start(command, {
+  async start(command: string, args: string[] = [], options: { cwd?: string; timeoutMs?: number; env?: Record<string, string> } = {}) {
+    const process = await this.sandbox.commands.start(command, {
       args,
       cwd: options.cwd,
       env: options.env,
       timeoutMs: options.timeoutMs,
       background: true,
     });
+    const completion = process.wait();
+    void completion.catch(() => undefined);
+    return {
+      wait: () => completion,
+      kill: () => process.kill(),
+    };
   }
 
   mkdir(path: string): Promise<void> {

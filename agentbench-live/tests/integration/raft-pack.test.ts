@@ -42,6 +42,9 @@ test("discovers the Raft pack as an external root with deterministic scoring", a
   expect(loaded.definition.tasks[0].evaluators.filter((item) =>
     item.type === "model-judge",
   )).toHaveLength(0);
+  expect(loaded.snapshot.files.map((file) => file.path)).toContain(
+    "tasks/raft-safety/evaluators/verify-raft.mjs",
+  );
 });
 
 test("external-only certification validates the reference but rejects fake Solari provenance", async () => {
@@ -94,6 +97,10 @@ test("reference simulator produces byte-stable passing traces for every pinned s
     expect(await readFile(join(first, "viewer", "index.html"), "utf8"))
       .toMatch(/data-testid="invariant-election-safety"[^>]*>PASS/);
   }
+});
+
+test("reference shell entrypoint uses Linux-compatible line endings", async () => {
+  expect(await readFile(join(referenceRoot, "run"), "utf8")).not.toContain("\r");
 });
 
 test("independent verifier reruns the reference and emits trace-derived assertions", async () => {

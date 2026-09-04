@@ -1,0 +1,2 @@
+*.sh text eol=lf
+examples/packs/*/reference-submission/run text eol=lf

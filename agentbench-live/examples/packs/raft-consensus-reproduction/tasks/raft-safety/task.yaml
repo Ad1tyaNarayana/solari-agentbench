@@ -8,6 +8,7 @@ fixtures:
   - fixtures/minority-isolation.json
   - fixtures/majority-recovery.json
   - fixtures/divergent-log-repair.json
+  - evaluators/verify-raft.mjs
 resources:
   allowed: [sandbox, browser]
   planningRequired: true
@@ -28,7 +29,7 @@ evaluators:
     prerequisites: [run-entry, results]
     config:
       argv: [node, /benchmark/tasks/raft-safety/evaluators/verify-raft.mjs]
-      network: false
+      network: true
       timeoutMs: 180000
       resultPreview: { directory: /result/viewer, port: 4173, healthPath: /index.html }
   - id: inspect-trace

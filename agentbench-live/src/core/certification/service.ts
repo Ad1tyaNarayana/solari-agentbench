@@ -94,7 +94,10 @@ export class CertificationService {
 
   private assertCertifiable(evaluation: EvaluationEngineResult): void {
     if (evaluation.report.status !== "valid-score" || evaluation.report.score === null) {
-      throw new Error("Certification requires a valid evaluator score");
+      const diagnostics = evaluation.report.results
+        .map((result) => `${result.evaluatorId}:${result.status}: ${result.summary}`)
+        .join("; ");
+      throw new Error(`Certification requires a valid evaluator score (${diagnostics})`);
     }
     if (evaluation.resourceAudit.created.sandboxes.length === 0) {
       throw new Error("Certification requires observed live Solari sandbox creation");

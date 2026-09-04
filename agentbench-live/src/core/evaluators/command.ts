@@ -44,6 +44,13 @@ async function waitForHealthy(url: string, timeoutMs: number): Promise<void> {
   throw new Error(`Preview health check failed: ${lastStatus}`);
 }
 
+function withPreviewPath(previewUrl: string, path: string): string {
+  const url = new URL(previewUrl);
+  url.pathname = path;
+  url.hash = "";
+  return url.toString();
+}
+
 export class CommandEvaluator implements Evaluator {
   readonly type = "command" as const;
   validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
@@ -112,7 +119,7 @@ export class CommandEvaluator implements Evaluator {
       if (!config.publishPort) throw new Error("background commands require publishPort");
       await sandbox.start(argv[0], argv.slice(1), { cwd: "/submission", env, timeoutMs });
       const preview = await sandbox.previewUrl(config.publishPort);
-      const health = new URL(config.healthPath ?? "/", preview.url).toString();
+      const health = withPreviewPath(preview.url, config.healthPath ?? "/");
       await waitForHealthy(health, timeoutMs);
       return { status: "passed", earnedFraction: 1, summary: "Background service is healthy", assertions: [{ id: `${definition.id}.health`, passed: true, summary: "Preview health check" }], evidence: [], outputs: { previewUrl: preview.url }, metadata };
     }
@@ -136,7 +143,7 @@ export class CommandEvaluator implements Evaluator {
       );
       const preview = await sandbox.previewUrl(config.resultPreview.port);
       await waitForHealthy(
-        new URL(config.resultPreview.healthPath, preview.url).toString(),
+        withPreviewPath(preview.url, config.resultPreview.healthPath),
         timeoutMs,
       );
       previewUrl = preview.url;

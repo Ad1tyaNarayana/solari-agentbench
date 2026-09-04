@@ -144,7 +144,10 @@ test("fails closed and records evidence when final integrity enumeration breaks"
 
 test("serves only evaluator result output after a network-isolated command exits", async () => {
   const sandbox = fakeSandbox();
-  sandbox.previewUrl.mockResolvedValue({ url: "https://preview.test" });
+  sandbox.previewUrl.mockResolvedValue({
+    url: "https://preview.test/?pt_token=preview-secret",
+    token: "preview-secret",
+  });
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 })));
   const evaluatorContext = await context(sandbox);
   try {
@@ -173,7 +176,13 @@ test("serves only evaluator result output after a network-isolated command exits
       ["-m", "http.server", "4173", "--directory", "/result/viewer"],
       expect.objectContaining({ cwd: "/result" }),
     );
-    expect(outcome.outputs.previewUrl).toBe("https://preview.test");
+    expect(fetch).toHaveBeenCalledWith(
+      "https://preview.test/index.html?pt_token=preview-secret",
+      expect.any(Object),
+    );
+    expect(outcome.outputs.previewUrl).toBe(
+      "https://preview.test/?pt_token=preview-secret",
+    );
   } finally {
     vi.unstubAllGlobals();
   }

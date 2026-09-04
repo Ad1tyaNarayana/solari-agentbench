@@ -46,6 +46,29 @@ test("connects newly created and reattached sandboxes before file operations", a
   expect(attached.connect).toHaveBeenCalledOnce();
 });
 
+test("observes background sandbox completion before the control channel closes", async () => {
+  const wait = vi.fn(async () => 0);
+  const kill = vi.fn(async () => undefined);
+  const sandbox = {
+    id: "sandbox-created",
+    connect: vi.fn(async () => undefined),
+    commands: {
+      start: vi.fn(async () => ({ wait, kill })),
+    },
+  };
+  const service = new SandboxServiceAdapter({
+    create: vi.fn(async () => sandbox),
+  } as never);
+
+  const handle = await service.create();
+  const process = await handle.start("python3", ["-m", "http.server"]);
+
+  expect(wait).toHaveBeenCalledOnce();
+  await expect(process.wait()).resolves.toBe(0);
+  await process.kill();
+  expect(kill).toHaveBeenCalledOnce();
+});
+
 test("connects newly created desktops before GUI operations", async () => {
   const desktop = { id: "desktop-created", connect: vi.fn(async () => undefined) };
   const client = { create: vi.fn(async () => desktop) };

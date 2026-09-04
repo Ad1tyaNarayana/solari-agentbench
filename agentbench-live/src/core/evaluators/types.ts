@@ -36,6 +36,7 @@ export type EvaluatorFinalizerResult = EvaluatorFinalizerOutcome & {
 export interface EvaluatorResourcePort {
   acquireSandbox(label: string, options?: { timeoutMs?: number }): Promise<SandboxHandle>;
   acquireBrowser(label: string, options?: { recording?: boolean }): Promise<BrowserHandle>;
+  releaseBrowser(id: string): Promise<void>;
   acquireDesktop(label: string, options?: { timeoutMs?: number }): Promise<DesktopHandle>;
   publishOutputs(evaluatorId: string, outputs: Record<string, unknown>): void;
   getOutput(evaluatorId: string, key: string): unknown;

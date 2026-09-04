@@ -6,6 +6,7 @@ import { CertificationService } from "@/core/certification/service";
 import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { EvaluatorRegistry } from "@/core/evaluators/registry";
 import { createSolariServices } from "@/core/solari/clients";
+import type { EvaluationEngineResult } from "@/core/evaluators/engine";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -66,6 +67,38 @@ test("writes a redacted certificate only after sandbox/browser use and clean dis
   }
 });
 
+test("reports redacted evaluator diagnostics when a certification score is invalid", async () => {
+  const fixture = await certificationFixture();
+  const services = createSolariServices("slr_test_example", "https://example.invalid");
+  const failed = evaluationResult();
+  failed.report = {
+    ...failed.report,
+    status: "invalid-score" as const,
+    score: null,
+    results: [
+      {
+        ...failed.report.results[0],
+        evaluatorId: "verify-raft",
+        status: "error" as const,
+        earnedPoints: 0,
+        summary: "sandbox unavailable",
+      },
+    ],
+  };
+  const service = serviceFor(fixture, { run: vi.fn(async () => failed) }, services);
+  try {
+    await expect(service.certify({
+      benchmarkRoot: fixture.pack,
+      submissionDirectory: fixture.submission,
+      outputPath: fixture.output,
+    })).rejects.toThrow(
+      "Certification requires a valid evaluator score (verify-raft:error: sandbox unavailable)",
+    );
+  } finally {
+    await services.dispose?.();
+  }
+});
+
 test.each([
   ["missing browser", { browsers: [], sandboxes: ["s1"], desktops: [] }, []],
   ["missing sandbox", { browsers: ["b1"], sandboxes: [], desktops: [] }, []],
@@ -87,7 +120,7 @@ test.each([
   }
 });
 
-function evaluationResult() {
+function evaluationResult(): EvaluationEngineResult {
   return {
     report: {
       status: "valid-score" as const,

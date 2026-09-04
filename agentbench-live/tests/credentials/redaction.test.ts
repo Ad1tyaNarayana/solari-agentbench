@@ -7,6 +7,11 @@ import {
 } from "@/core/credentials/redaction";
 import { redact } from "@/core/security/redact";
 
+test("redacts Solari signed preview URLs", () => {
+  expect(redactCredentialOutput({ url: "https://preview.test/?pt_token=private-preview" }))
+    .toEqual({ url: "[REDACTED_SIGNED_URL]" });
+});
+
 function environmentStore(values: Record<string, string>) {
   const map: Record<string, string> = {};
   const environment: Record<string, string> = {};

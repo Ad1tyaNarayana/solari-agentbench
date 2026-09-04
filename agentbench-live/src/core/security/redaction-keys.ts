@@ -8,6 +8,7 @@ const credentialKeys = new Set([
   "key",
   "sig",
   "token",
+  "pttoken",
   "accesstoken",
   "authtoken",
   "bearertoken",
