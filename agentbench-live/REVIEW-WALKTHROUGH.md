@@ -4,6 +4,12 @@ Updated September 5, 2026 against the local working tree. This supersedes the
 earlier review against c25e24c. See [current state](docs/current-state.md) and
 [verification details](docs/evidence-verification.md). This is not a certificate.
 
+Lead the recording with the demonstrated result: the browser evaluator caught a
+deployment failure after agent-reported success, and both configurations passed
+the statistics checks. State Raft's outcome directly: its results schema failed,
+so replication and browser checks were skipped. Save implementation limits for
+the relevant chapter rather than opening with a list of caveats.
+
 ## Start the local app
 
 Project: `D:\aditya\code\solari-agentbench\agentbench-live`.
@@ -59,13 +65,22 @@ timeout has no valid quality score. Stages are coarse orchestration labels.
 - [URL Shortener](http://127.0.0.1:3000/runs/206605e5-7870-4d32-888e-f6926834f595):
   73.33 quality / 64.29 time-adjusted in 5m 42s. Show the HTTP/HTTPS link
   failure, screenshots, replay JSON and sandbox logs.
-- [Raft](http://127.0.0.1:3000/runs/6d9ca115-4a6b-490f-8d0e-55da11b992f0):
-  15-minute provider timeout before independent evaluation. Do not present it
-  as a successful paper replication.
+- [Raft follow-up](http://127.0.0.1:3000/runs/7e5cda2b-544d-4fb6-8765-40e67c466f30):
+  10 quality / 5.06 time-adjusted in 9m 52s, from static checks only. Results
+  schema failure skipped reproduction and browser capture. Replication remains
+  unverified; “completed” does not mean “passed.” The earlier timeout remains
+  visible in the run history.
 
 These URLs require this machine's local database. They are not public evidence
-links on a fresh checkout. Old snapshots/outcomes remain unchanged. This batch
-is not a completed head-to-head model comparison.
+links on a fresh checkout. Old snapshots/outcomes remain unchanged.
+
+The follow-up now completes the tutorial's four-cell configuration comparison:
+[Luna URL](http://127.0.0.1:3000/runs/7442a84e-f733-4cd9-98b6-15a5556c3de0)
+earned 73.33 quality / 52.89 time-adjusted in 6m 56s, and
+[Luna Statistics](http://127.0.0.1:3000/runs/8d934b6e-f311-42a8-87da-9af2002d6a1c)
+earned 100 / 88.95 in 5m 37s. Both pin the Sol baseline snapshot. Show these
+alongside Sol's results: equal quality, Sol faster in these single observations.
+Model and reasoning effort both differ; do not call this a universal model ranking.
 
 ## Fixed since the original walkthrough
 

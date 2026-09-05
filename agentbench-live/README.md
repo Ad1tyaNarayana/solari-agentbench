@@ -1,25 +1,49 @@
 # AgentBench Live
 
+**[Start here: current capabilities, verified results, and limitations](docs/current-state.md).** This README is the setup and command reference.
+
 AgentBench Live is a local-first evaluation workbench for coding and research agents. Define benchmark tasks, configure providers and resource budgets, and evaluate submissions with independent checks on Solari infrastructure.
 
-The dashboard shows local runs, scores, assertions, and whatever evidence was actually captured. Public source code is not the same as a hosted service or published live results. See [current implementation and limitations](docs/current-state.md), [verified local runs](docs/evidence-verification.md), and the [review/filming walkthrough](REVIEW-WALKTHROUGH.md). Dated designs and plans are historical intent, not proof of shipped behavior.
+## Verified results
 
-## What it demonstrates
+AgentBench completed a four-run Sol/Luna comparison on the same tutorial snapshot.
+Both configurations passed the statistics reproduction checks. On URL Shortener,
+the independent browser evaluator caught same-origin and redirect failures after
+the agents reported successful local checks. Screenshots, replay events, logs and
+integrity-checked artifact downloads make those failures inspectable.
+
+| Task | Latest observed outcome |
+| --- | --- |
+| URL Shortener | Both configurations scored **73.33 quality**; the browser checks exposed real deployment failures |
+| Same Stats, Different Graph | Both configurations scored **100 quality**; all ten evaluators passed |
+| Raft Safety Under Faults | **Has not passed.** Latest attempt earned **10 quality / 5.06 time-adjusted** from static checks; a results-schema failure skipped reproduction and browser verification |
+
+Sol was faster in these single observations. Full timings, configuration details
+and comparison limits are in the [current-state guide](docs/current-state.md).
+The application runs locally; its database and captured artifacts stay private
+until explicitly reviewed and exported.
+
+## Capabilities
 
 AgentBench supports all three Solari primitives. Agent selection and benchmark-owned verification are separate:
 
 - **Sandbox** builds submitted applications and reruns computational experiments from scratch.
 - **Browser** records configured verifier actions for URL Shortener and the Raft trace viewer, including assertions and screenshots.
-- **Desktop** is permitted for URL Shortener agent exploration, but no current generic task evaluator automatically captures it. A separate live diagnostic verified desktop screenshots; it is not a scored task or desktop video.
+- **Desktop** is available for URL Shortener agent exploration. Screenshot capture was verified separately; automatic desktop evaluation and desktop video remain future work.
 
-The tutorial offers two exact Codex configurations for comparisons under identical prompts and budgets. Their presence is not evidence of a completed comparison matrix. Custom packs may use Codex, Anthropic, an OpenAI-compatible API, or an executable implementing the JSONL harness protocol:
+The tutorial presets are listed below. Custom packs can use Codex, Anthropic,
+an OpenAI-compatible API, or an executable implementing the JSONL harness protocol.
 
 | Agent | Model | Reasoning |
 | --- | --- | --- |
 | Sol · Low | `gpt-5.6-sol` | low |
 | Luna · High | `gpt-5.6-luna` | high |
 
-The tutorial contains two tasks: URL Shortener and a deterministic reproduction of the “Same Stats, Different Graph” simulated-annealing idea. A second, repository-authored example pack adds Raft Safety Under Faults with `raft-codex` (`gpt-5.6-sol`, high reasoning). All three use deterministic evaluators with zero model-judge weight; agent generation itself is not deterministic. Both packs are discovered by default. The Raft pack exercises the external-pack format, but is not evidence of independent third-party adoption.
+The tutorial contains URL Shortener and Same Stats, Different Graph. A second
+example pack adds Raft Safety Under Faults with `raft-codex` (`gpt-5.6-sol`, high
+reasoning). Both packs are discovered by default and use deterministic evaluators
+with zero model-judge weight. Agent generation remains stochastic. Both packs
+were authored in this repository; external-user validation is the next milestone.
 
 ## Architecture
 
@@ -97,11 +121,33 @@ agentbench-live/
 
 The built-in evaluator types are `file`, `schema`, `command`, `http`, `browser`, `numeric`, and `model-judge`. Enabled weights must total exactly 100. Model judges are capped at 30 points by default; exceeding the cap is invalid, and a majority additionally requires an explicit `allowModelJudgeMajority` opt-in. Prerequisites form an acyclic graph: a failed prerequisite skips its dependents but independent checks continue. Assertion failures earn zero or partial points; evaluator infrastructure errors invalidate the primary score instead of being misreported as a bad submission.
 
-Command evaluators receive permission-hardened, tamper-evident sealed evaluator inputs at `/benchmark` and `/submission` and are instructed to write outputs under `/result`. This is permission hardening plus post-run tamper detection, not a guarantee that privileged code cannot write elsewhere in the VM. A canonical path/size/SHA-256 manifest is checked after the entire dependent evaluator graph finishes; any mutation is an evaluator error and invalidates the score. Network is disabled with a fresh Linux network namespace unless the benchmark explicitly enables it; evaluation fails closed when the runtime cannot provide that namespace. On Solari, a network-only namespace with all capabilities dropped is used when nested user namespaces are unsupported. The bundled trusted Raft pack retains its explicit network-enabled policy. HTTP and recorded-browser evaluators target verifier-owned outputs such as a preceding command evaluator's preview URL. Model judges receive only declared artifacts and retain provider/model, sampling, rubric, prompt, input digests, usage, raw redacted responses, and repair count as provenance.
+Command evaluators receive permission-hardened input trees at `/benchmark` and
+`/submission`, with outputs under `/result`. After the dependent graph finishes,
+a path/size/SHA-256 manifest detects input changes; a mismatch invalidates the
+score. This is tamper detection within a trusted local operator model.
+
+Offline commands use a fresh Linux network namespace. When nested user namespaces
+are unsupported, the fallback uses a network-only namespace with capabilities
+dropped. **This fallback keeps networking isolated. If both probes fail, offline
+submission execution stops; networking is never silently enabled.** URL Shortener
+and Raft explicitly opt into networking in their task configuration.
+
+HTTP and browser evaluators consume verifier-owned outputs such as sandbox
+preview URLs. Model judges receive declared artifacts and retain provider/model,
+sampling, rubric, prompt/input digests, usage, redacted responses and repair count.
 
 ## Raft paper-reproduction pack
 
-`examples/packs/raft-consensus-reproduction` is an external pack based on Ongaro and Ousterhout's [USENIX ATC 2014 paper page](https://www.usenix.org/conference/atc14/technical-sessions/presentation/ongaro) and [official PDF](https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf). Its five deterministic fault scenarios reproduce and independently check:
+**Current result: Raft has not passed end-to-end.** The latest agent submission
+failed the results schema before reproduction could run. Its 10-point score
+covers only the entrypoint and methodology checks; algorithm correctness remains
+unverified. [Attempt details](examples/packs/raft-consensus-reproduction/certification/STATUS.md)
+are retained for investigation.
+
+`examples/packs/raft-consensus-reproduction` is a repository-authored example pack
+based on Ongaro and Ousterhout's [USENIX ATC 2014 paper page](https://www.usenix.org/conference/atc14/technical-sessions/presentation/ongaro)
+and [official PDF](https://www.usenix.org/system/files/conference/atc14/atc14-paper-ongaro.pdf).
+Its verifier is configured to test these properties across five fault scenarios:
 
 - election safety: at most one leader exists in a term;
 - log matching: equal index/term entries imply equal prefixes;
@@ -111,7 +157,9 @@ Command evaluators receive permission-hardened, tamper-evident sealed evaluator 
 
 The included reference submission is a dependency-free executable model of the paper's election, replication, partition, recovery, and divergent-log-repair subset—not a production Raft implementation. The verifier runs every scenario twice, derives claims from JSONL events instead of trusting the reported summary, and publishes a static trace viewer through an evaluator-owned Solari browser preview.
 
-Validate the pack without provisioning anything, then optionally attempt live certification with Solari sandbox and browser evidence. The second command provisions resources and writes a local report; it does not publish anything or guarantee certification. See [current Raft status](examples/packs/raft-consensus-reproduction/certification/STATUS.md) before making a success claim:
+The first command validates the pack locally. The second attempts live reference
+certification, provisions billable Solari resources, and writes a local report.
+Reference certification evaluates an existing submission separately from agent generation:
 
 ```powershell
 $env:AGENTBENCH_BENCHMARK_ROOTS = "examples/packs/raft-consensus-reproduction"
@@ -199,6 +247,10 @@ stays unchanged. A separate time-adjusted score is
 perfect ten-minute run scores 100 quality and 50 time-adjusted. Elapsed time
 includes planning, generation, independent evaluation, and cleanup, but not
 queue time. Invalid or incomplete runs do not get a time-adjusted score.
+The metric penalizes lateness: all finishes within five minutes receive the same
+multiplier. Codex sees the target, cap and formula in its execution prompt.
+Quality and raw elapsed time are displayed alongside the adjusted score so
+readers can inspect the quality/time tradeoff directly.
 Custom packs opt in with `resources.budget.targetMinutes`; `totalMinutes`
 remains the hard limit. Old runs without this policy are not rescored, and
 different task snapshots must not be treated as directly comparable.

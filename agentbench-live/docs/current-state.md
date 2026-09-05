@@ -1,13 +1,17 @@
 # AgentBench Live — current implementation
 
-Updated September 5, 2026 against the local working tree, not just its last
-commit. This is the current product overview. Dated designs and plans preserve
-earlier intent; they are not release certificates.
+Updated September 5, 2026 against the local working tree. This overview summarizes
+the implemented platform and observed local results.
 
 AgentBench runs configurable coding and research benchmarks with independent
 evaluators and retained evidence. Solari supplies execution resources; model
-providers are configured separately. The application is a trusted local operator
-tool, not a hosted multi-tenant service.
+providers are configured separately. The application is a trusted local operator tool.
+
+**Demonstrated:** a same-snapshot Sol/Luna comparison, successful independent
+statistics reproduction for both configurations, and browser checks that caught
+URL Shortener deployment failures after agent-reported success. Captured artifacts
+passed download, size and hash checks. **Raft has not passed:** its latest results
+schema failure prevented reproduction and browser verification.
 
 ## Implemented platform
 
@@ -24,17 +28,21 @@ tool, not a hosted multi-tenant service.
 
 ## Default task library
 
-| Task | Pack / agent presets | Independent verification |
+| Task | Demonstration status | Configured independent verification |
 | --- | --- | --- |
-| URL Shortener | `agentbench-live`: `sol-low`, `luna-high` | Contract checks, fresh sandbox build, recorded browser assertions and screenshots |
-| Same Stats, Different Graph | `agentbench-live`: `sol-low`, `luna-high` | Offline seeded reproduction, byte reproducibility, statistics and ellipse RMSE |
-| Raft Safety Under Faults | `raft-consensus-reproduction`: `raft-codex` | Repeated fault scenarios, trace-derived safety checks, recorded browser trace-viewer checks |
+| URL Shortener | **Evaluated — partial pass** | Contract checks, fresh sandbox build, recorded browser assertions and screenshots |
+| Same Stats, Different Graph | **Evaluated — full pass** | Offline seeded reproduction, byte reproducibility, statistics and ellipse RMSE |
+| Raft Safety Under Faults | **Unverified replication — results contract failed** | Repeated fault scenarios, trace-derived safety checks, recorded browser trace-viewer checks |
+
+The tutorial pack (`agentbench-live`) offers `sol-low` and `luna-high` for its
+two tasks. The Raft pack (`raft-consensus-reproduction`) offers `raft-codex`.
+Configured checks describe what would run, not proof that a task has completed.
 
 Both packs are v1.1.0. All three tasks use deterministic checks with zero
 model-judge weight; agent generation is not deterministic. Empty/unset
 `AGENTBENCH_BENCHMARK_ROOTS` discovers both packs; a nonempty override replaces
 the defaults. Studio-saved writable packs also appear in the dashboard.
-The separate Raft example was authored here, not contributed by an outside user.
+Both shipped packs were authored in this repository.
 
 URL Shortener allows browser, sandbox and desktop exploration; the research tasks
 allow browser and sandbox. A RunPlan is intent, not execution evidence. Verifier
@@ -54,19 +62,48 @@ time-adjusted score. Custom packs opt in with `targetMinutes`; `totalMinutes`
 is the hard limit. Historical runs are not rescored. Compare only the same task
 snapshot and policy.
 
-## Latest verified local batch
+**Policy visibility:** the Codex execution prompt explicitly tells the agent
+the target, hard cap and formula. This is deliberate and unchanged for the
+comparison runs. The metric penalizes lateness;
+it gives no extra multiplier below five minutes. Waiting does not improve the
+score, and lower quality still reduces it. Agents may choose quality/time
+tradeoffs, so report quality and raw duration alongside the adjusted score.
 
-| Task / run ID | Duration | Quality | Time-adjusted | Outcome |
+## Observed configuration comparison
+
+Both configurations ran both tutorial tasks on the **same snapshot and timing
+policy**. Sol is `gpt-5.6-sol` with low reasoning; Luna is `gpt-5.6-luna` with high
+reasoning. These are configuration comparisons, not a controlled test of model
+identity alone.
+
+| Task | Configuration | Duration | Quality | Time-adjusted |
 | --- | --- | --- | --- | --- |
-| Statistics — `df0c80ab-bbae-44f3-b54b-624b5e09595c` | 147,598 ms | 100 | 100 | All ten evaluators passed; input seal and logs retained |
-| URL Shortener — `206605e5-7870-4d32-888e-f6926834f595` | 342,158 ms | 73.33 | 64.29 | HTTP link on HTTPS deployment failed same-origin/redirect checks; six artifacts retained |
-| Raft — `6d9ca115-4a6b-490f-8d0e-55da11b992f0` | 900,113 ms | — | — | Provider execution timed out before evaluation |
+| URL Shortener | Sol · Low | 342,158 ms | 73.33 | 64.29 |
+| URL Shortener | Luna · High | 415,976 ms | 73.33 | 52.89 |
+| Statistics | Sol · Low | 147,598 ms | 100 | 100 |
+| Statistics | Luna · High | 337,278 ms | 100 | 88.95 |
 
-These are local observations, not public certificates, a completed two-model
-matrix or proof of a universal winner. Statistics and URL use `sol-low`; Raft
-uses `raft-codex`. The URL screenshots share a digest because the failed
-same-origin check blocked navigation. See [the verification record](evidence-verification.md)
-for historical attempts, snapshot changes and separate infrastructure diagnostics.
+Both configurations passed every statistics evaluator. Both URL submissions
+failed the same-origin and final-URL browser checks, retaining six artifacts each.
+Each URL run's two screenshots share a digest because navigation was blocked.
+Sol was faster with equal measured quality **in these samples**. This is one
+sequential observation per configuration/task, not repeated randomized trials;
+provider and infrastructure latency can affect timing. It does not establish a
+universal winner. Earlier failures remain in the history.
+
+Tutorial snapshot: `eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee`.
+Run IDs, artifact checks and earlier attempts are in the
+[verification record](evidence-verification.md). These results are local, not
+public certificates or an automatically exported dataset.
+
+**Raft replication remains unverified.** The single follow-up attempt
+`7e5cda2b-544d-4fb6-8765-40e67c466f30` finished in 592,394 ms with **10 quality /
+5.06 time-adjusted** from static checks only. Its `results.json` failed the schema
+contract, so reproduction and browser verification were skipped and no capture
+artifacts were produced. “Completed” means the evaluation pipeline ended, not
+that the submission passed. This does not establish whether its Raft algorithm
+was correct. The previous 900,113 ms timeout remains in history. Raft is not part
+of the two-configuration tutorial comparison.
 
 ## Evidence: available versus unfinished
 
@@ -76,7 +113,7 @@ for historical attempts, snapshot changes and separate infrastructure diagnostic
 | Sandbox logs, assertions and input-integrity reports | Live terminal viewer or terminal video |
 | Statistics reproduction results in evaluator reports | Retained statistics plot or browser recording for that task |
 | Separate live desktop screenshot/readiness diagnostic | Scored desktop task or continuous desktop recording |
-| Raft task, verifier and reference implementation | Successful current Raft agent run or new post-fix Raft certificate |
+| Raft task, verifier and reference implementation | Successfully verified Raft replication or new post-fix Raft certificate |
 
 Replay uses Solari's CDP default context, release, bounded retrieval, local JSON
 redaction and hashing. Missing evidence is labeled honestly. Lifecycle stages are
@@ -84,9 +121,27 @@ coarse orchestration labels, not measurements of each remote action.
 
 Command inputs are permission-hardened and checked for mutation after the graph;
 this is tamper detection, not an impenetrable multi-tenant filesystem boundary.
-Offline evaluators fail closed if isolation is unavailable. A capability-dropped
-network namespace was verified when nested user namespaces were unsupported.
+The capability-dropped fallback still places offline commands in an isolated
+network namespace. If both namespace probes fail, the submission is not executed;
+the fallback never silently enables networking.
 URL Shortener and Raft explicitly allow evaluator networking.
+
+## External-user validation
+
+**Current evidence: internal runs only; no verified third-party pack adoption.**
+The next validation step is one outside engineer trying a task from their own
+workflow:
+
+1. Use a clean checkout and Studio to define a small task with an objective check.
+2. Run it with their own local credentials and explicit resource budget. Record
+   setup friction, the run identity, snapshot digest and evaluator outcome.
+3. With their permission, share the credential-free pack and a reviewed result
+   summary, including whether the result helped a real decision and whether they
+   would use it again.
+
+An independently completed trial establishes initial outside use; repeat usage
+and useful decisions are the follow-up evidence to collect. Share packs and
+reviewed summaries, never credential stores or raw databases.
 
 ## Verification and privacy
 
@@ -106,7 +161,6 @@ raw database. Screenshot pixels need visual review; text redaction is not OCR.
 - [Review and filming walkthrough](../REVIEW-WALKTHROUGH.md)
 - [Detailed verification](evidence-verification.md)
 - [Raft certification status](../examples/packs/raft-consensus-reproduction/certification/STATUS.md)
-- [Historical design and plan index](../../docs/README.md)
 
 Update this overview and the setup README when behavior changes. Add dated
 verification observations; do not silently rewrite old results.

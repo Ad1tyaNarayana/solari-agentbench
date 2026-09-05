@@ -4,6 +4,53 @@ This is a dated local verification record, not a public certificate or a promise
 that later runs will pass. See [current implementation](current-state.md) for the
 product overview and remaining limits. Run IDs refer to the private local database.
 
+## Review follow-up: comparison protocol
+
+The operator approved two Luna tutorial runs and one additional Raft attempt,
+sequentially, with no automatic retries. The API submissions pin the original
+baseline digests and reject a changed snapshot rather than silently comparing
+different tasks:
+
+- Tutorial: `eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee`.
+- Raft: `5861428ea91b94afc8e21c724500b4def60f9fad1c7469c8020930aaabacf268`.
+
+Luna URL run: `7442a84e-f733-4cd9-98b6-15a5556c3de0`.
+Luna statistics run: `8d934b6e-f311-42a8-87da-9af2002d6a1c`.
+Raft retry: `7e5cda2b-544d-4fb6-8765-40e67c466f30`.
+These were submitted as new attempts; outcomes are not inferred from submission.
+
+Luna URL completed in 415,976 ms: 73.33 quality / 52.89 time-adjusted, compared
+with Sol's 73.33 / 64.29 in 342,158 ms on the identical snapshot. Both passed
+one of three browser assertions and failed the same-origin and final-URL checks.
+Luna retained six artifacts, including 21 replay events and two screenshot
+references sharing one PNG digest. All routes returned HTTP 200 with matching
+hashes and byte lengths. The run reported zero cleanup issues. This is a partial
+submission result, not an evaluator infrastructure error.
+
+Luna statistics completed in 337,278 ms: 100 quality / 88.95 time-adjusted,
+compared with Sol's 100 / 100 in 147,598 ms on the identical snapshot. All ten
+evaluators passed. The input seal passed; all three artifact routes returned
+HTTP 200 with matching hashes and sizes. Stdout and stderr are empty, not missing.
+Zero cleanup issues were reported. The task has no configured browser capture.
+
+The single Raft retry finished in 592,394 ms with 10 quality / 5.06 time-adjusted.
+`run-entry` and `methodology` passed (five points each). `results.json` failed
+with ten schema violations: missing `paper`, `protocol`, and `deterministic`,
+plus unsupported additional properties. `verify-raft` and `inspect-trace` were
+skipped by their prerequisite graph. The manifest is empty; no independent
+reproduction or browser recording was produced. The pipeline's `completed` /
+`valid-score` status is not a passing replication. This static-contract failure
+does not establish the correctness of the generated algorithm. No submission
+was patched afterward and no additional retry was launched. Zero cleanup issues
+were reported.
+
+The scoring formula and Codex prompt disclosure remain unchanged. Quality,
+raw elapsed time and time-adjusted score must be shown together. The comparison
+is between configurations (`sol-low` versus `luna-high`), so model and reasoning
+effort both differ. Runs are sequential, not randomized repeated trials; provider
+and infrastructure latency can affect time. This cannot establish a universal
+model ranking. Historical attempts remain available and failures are not discarded.
+
 ## Recording fix and current verification
 
 The browser SDK was updated from installed 0.1.2 to 0.1.3. Its published

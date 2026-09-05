@@ -1,5 +1,7 @@
 # Solari Cookbook
 
+**AgentBench reviewers: [start with the current-state guide](agentbench-live/docs/current-state.md).** It summarizes demonstrated results, unverified tasks, and current limitations.
+
 Short, runnable examples for [Solari](https://getsolari.com) — cloud browsers,
 sandboxes, and desktops behind one API key.
 
@@ -11,9 +13,22 @@ past. Copy one into your project and change the parts you care about.
 
 [AgentBench Live](agentbench-live) is this fork's main project: a local-first, customizable evaluation workbench for engineers choosing models and agent configurations for their own tasks. It separates an agent's claims from independent checks on fresh Solari resources.
 
-The default library has three tasks across two packs: URL Shortener, Same Stats, Different Graph, and Raft Safety Under Faults. Studio authors custom packs; providers include local Codex, Anthropic, OpenAI-compatible APIs, and executable JSONL agents. Runs retain SQLite events, evaluator assertions, and captured artifacts. Browser replay is saved JSON, not an embedded video player; desktop is optional, not automatically captured by every task.
+The default library has three tasks across two packs: URL Shortener, Same Stats,
+Different Graph, and Raft Safety Under Faults. Studio authors custom packs;
+providers include local Codex, Anthropic, OpenAI-compatible APIs and executable
+JSONL agents. Runs retain SQLite events, evaluator assertions, screenshots and
+browser replay JSON. Desktop exploration is optional.
 
-Current packs use a five-minute target and 15-minute cap, with separate quality and time-adjusted scores. The latest local batch produced statistics 100/100, URL Shortener 73.33 quality / 64.29 time-adjusted, and a Raft timeout—not three passing demos or an established model ranking. See the [current-state guide](agentbench-live/docs/current-state.md), [setup README](agentbench-live/README.md), and [verification record](agentbench-live/docs/evidence-verification.md). Local runs and credentials are not shipped as public evidence.
+**Verified locally:** Sol and Luna both passed the statistics reproduction checks,
+while independent browser checks exposed URL Shortener deployment failures after
+agent-reported success. Both scored 100 quality on Statistics and 73.33 on URL
+Shortener; Sol was faster in these four same-snapshot samples.
+
+**Raft has not passed.** Its latest attempt earned 10 points from static checks;
+a schema failure skipped reproduction and browser verification. The
+[current-state guide](agentbench-live/docs/current-state.md) includes the timings,
+evidence limits and next external-user trial. [Setup](agentbench-live/README.md)
+and [verification details](agentbench-live/docs/evidence-verification.md) support it.
 
 ## Examples
 

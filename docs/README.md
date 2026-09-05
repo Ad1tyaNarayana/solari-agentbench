@@ -11,13 +11,7 @@ remaining work as of September 5, 2026.
 
 ## Historical designs and implementation plans
 
-The files under `superpowers/specs` and `superpowers/plans` record the original
-designs, approvals and implementation sequences. Preserve them for provenance.
-They can contain superseded budgets, UI descriptions, proposed capabilities and
-unchecked implementation steps. They are neither current operating instructions
-nor evidence that every proposed feature shipped. The app's dated research
-workbench plan is historical for the same reason.
-
-For conflicts, consult current source/configuration and dated verification, then
-update the current guide. Do not retroactively rewrite old run outcomes or turn
-an approved design into a claim of successful live execution.
+`superpowers/specs`, `superpowers/plans`, and the app's dated workbench plan form
+the design archive. Use the current guide for operating behavior and the dated
+verification record for observed outcomes. Preserve the archive and old run
+results when updating the current docs.
