@@ -3,15 +3,17 @@
 Short, runnable examples for [Solari](https://getsolari.com) — cloud browsers,
 sandboxes, and desktops behind one API key.
 
-Every example in this repo is a complete program you can run in under a minute.
+The upstream cookbook examples below are small, standalone programs.
 They are deliberately small: one idea each, no framework, no scaffolding to read
 past. Copy one into your project and change the parts you care about.
 
 ## AgentBench Live
 
-[AgentBench Live](agentbench-live) is an evidence-first benchmark for coding and research agents. It lets each agent choose among Solari browsers, sandboxes, and desktops, then independently rebuilds and verifies the submission in fresh resources before publishing a scored evidence trail.
+[AgentBench Live](agentbench-live) is this fork's main project: a local-first, customizable evaluation workbench for engineers choosing models and agent configurations for their own tasks. It separates an agent's claims from independent checks on fresh Solari resources.
 
-The app includes a two-agent by two-task tutorial scoreboard, custom benchmark authoring, local Codex execution through an existing ChatGPT sign-in, SQLite persistence, server-sent live events, strict resource cleanup, and a safe representative public demo. The external [`raft-consensus-reproduction`](agentbench-live/examples/packs/raft-consensus-reproduction) pack shows how to turn a real distributed-systems paper into deterministic fault scenarios, trace-derived safety checks, and recorded Solari evidence. See the [AgentBench Live README](agentbench-live/README.md) for setup, certification commands, architecture, security, and cost controls.
+The default library has three tasks across two packs: URL Shortener, Same Stats, Different Graph, and Raft Safety Under Faults. Studio authors custom packs; providers include local Codex, Anthropic, OpenAI-compatible APIs, and executable JSONL agents. Runs retain SQLite events, evaluator assertions, and captured artifacts. Browser replay is saved JSON, not an embedded video player; desktop is optional, not automatically captured by every task.
+
+Current packs use a five-minute target and 15-minute cap, with separate quality and time-adjusted scores. The latest local batch produced statistics 100/100, URL Shortener 73.33 quality / 64.29 time-adjusted, and a Raft timeout—not three passing demos or an established model ranking. See the [current-state guide](agentbench-live/docs/current-state.md), [setup README](agentbench-live/README.md), and [verification record](agentbench-live/docs/evidence-verification.md). Local runs and credentials are not shipped as public evidence.
 
 ## Examples
 

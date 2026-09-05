@@ -1,25 +1,25 @@
 # AgentBench Live
 
-AgentBench Live is an evidence-first benchmark for coding and research agents, built for engineering leads and hiring teams who need to choose which agent configuration can be trusted with a real workflow. It gives agents the same task and budget, lets each agent choose the Solari primitives it needs, then independently rebuilds and verifies every submission in fresh infrastructure.
+AgentBench Live is a local-first evaluation workbench for coding and research agents. Define benchmark tasks, configure providers and resource budgets, and evaluate submissions with independent checks on Solari infrastructure.
 
-The result is a public scoreboard backed by observed builds, browser assertions, numerical reproductions, screenshots, and sanitized logs—not an agent claiming that it finished.
+The dashboard shows local runs, scores, assertions, and whatever evidence was actually captured. Public source code is not the same as a hosted service or published live results. See [current implementation and limitations](docs/current-state.md), [verified local runs](docs/evidence-verification.md), and the [review/filming walkthrough](REVIEW-WALKTHROUGH.md). Dated designs and plans are historical intent, not proof of shipped behavior.
 
 ## What it demonstrates
 
-AgentBench uses all three Solari primitives, selected per task rather than provisioned indiscriminately:
+AgentBench supports all three Solari primitives. Agent selection and benchmark-owned verification are separate:
 
 - **Sandbox** builds submitted applications and reruns computational experiments from scratch.
-- **Browser** records the URL Shortener flow and verifies its final redirect target.
-- **Desktop** captures permanent GUI evidence for the web task after the browser assertions pass.
+- **Browser** records configured verifier actions for URL Shortener and the Raft trace viewer, including assertions and screenshots.
+- **Desktop** is permitted for URL Shortener agent exploration, but no current generic task evaluator automatically captures it. A separate live diagnostic verified desktop screenshots; it is not a scored task or desktop video.
 
-The bundled tutorial compares two exact Codex configurations under identical prompts and budgets, while custom packs may use Codex, Anthropic, an OpenAI-compatible API, or any executable that implements the JSONL harness protocol:
+The tutorial offers two exact Codex configurations for comparisons under identical prompts and budgets. Their presence is not evidence of a completed comparison matrix. Custom packs may use Codex, Anthropic, an OpenAI-compatible API, or an executable implementing the JSONL harness protocol:
 
 | Agent | Model | Reasoning |
 | --- | --- | --- |
 | Sol · Low | `gpt-5.6-sol` | low |
 | Luna · High | `gpt-5.6-luna` | high |
 
-They solve two tasks: a complete URL Shortener application and a deterministic reproduction of the “Same Stats, Different Graph” simulated-annealing idea. Both bundled tutorial tasks are 100% deterministic and assign zero points to model-judge evaluators. The external `raft-consensus-reproduction` pack demonstrates the same system on a deeper distributed-systems paper reproduction.
+The tutorial contains two tasks: URL Shortener and a deterministic reproduction of the “Same Stats, Different Graph” simulated-annealing idea. A second, repository-authored example pack adds Raft Safety Under Faults with `raft-codex` (`gpt-5.6-sol`, high reasoning). All three use deterministic evaluators with zero model-judge weight; agent generation itself is not deterministic. Both packs are discovered by default. The Raft pack exercises the external-pack format, but is not evidence of independent third-party adoption.
 
 ## Architecture
 
@@ -38,11 +38,11 @@ Next.js dashboard ──> in-process queue ──> planning-only Codex call
                     static checks + model judge + optional Solari
 ```
 
-Planning and generation are deliberately separate. Planning has no Solari tools attached, so no billable resource can exist before the plan passes the shared Zod/JSON Schema contract. The validated plan lets the agent choose browser, sandbox, and/or desktop only when the task permits them. Evaluation then runs a weighted prerequisite graph owned by the benchmark—not by the agent.
+Planning and generation are deliberately separate. Planning has no Solari tools attached, so this runner does not provision Solari resources before the plan passes the shared Zod/JSON Schema contract. The validated plan lets the agent choose browser, sandbox, and/or desktop only when the task permits them. Evaluation then runs a weighted prerequisite graph owned by the benchmark—not by the agent. The diagram shows the Codex path; other providers use the same orchestration contract.
 
 ## Requirements
 
-- Node.js 20 or newer and npm
+- Node.js 22 and npm (the latest local verification used Node 22.23.2)
 - The Codex CLI available on `PATH`
 - A ChatGPT account signed into Codex
 - A Solari account with an API key and sufficient credits for the resources you run
@@ -50,8 +50,8 @@ Planning and generation are deliberately separate. Planning has no Solari tools 
 ## Setup
 
 ```bash
-git clone https://github.com/solari-sdk/solari-cookbook.git
-cd solari-cookbook/agentbench-live
+git clone https://github.com/Ad1tyaNarayana/solari-agentbench.git
+cd solari-agentbench/agentbench-live
 npm ci
 cp .env.example .env.local
 ```
@@ -71,7 +71,7 @@ codex login status
 npm run dev
 ```
 
-Open <http://localhost:3000>. With an empty database the dashboard displays a clearly labeled representative four-cell demo; persisted local runs take precedence as soon as one exists.
+Open <http://localhost:3000>. With an empty database the dashboard shows “No runs yet” and a link to an explicitly synthetic example. Synthetic records are excluded from the results table and totals.
 
 Open <http://localhost:3000/studio> to create a custom benchmark. Studio edits the canonical files directly, previews the exact YAML and prompt/rubric assets, detects external edits by revision hash, and atomically swaps a fully validated pack into `benchmarks/local`. Studio-authored packs use the same loader, content-addressed snapshot, orchestrator, and evaluator graph as external packs—there is no lighter test-only execution path. Save before dry-running or launching; paid launches require the explicit credit acknowledgement.
 
@@ -97,7 +97,7 @@ agentbench-live/
 
 The built-in evaluator types are `file`, `schema`, `command`, `http`, `browser`, `numeric`, and `model-judge`. Enabled weights must total exactly 100. Model judges are capped at 30 points by default; exceeding the cap is invalid, and a majority additionally requires an explicit `allowModelJudgeMajority` opt-in. Prerequisites form an acyclic graph: a failed prerequisite skips its dependents but independent checks continue. Assertion failures earn zero or partial points; evaluator infrastructure errors invalidate the primary score instead of being misreported as a bad submission.
 
-Command evaluators receive permission-hardened, tamper-evident sealed evaluator inputs at `/benchmark` and `/submission` and may write only their result area. A canonical path/size/SHA-256 manifest is checked after the entire dependent evaluator graph finishes; any mutation is an evaluator error and invalidates the score. Network is disabled with a fresh Linux network namespace unless the benchmark explicitly enables it; evaluation fails closed when the runtime cannot provide that namespace. The bundled trusted Raft certification pack explicitly enables network because Solari sandboxes currently do not expose nested network namespaces. HTTP and recorded-browser evaluators target verifier-owned outputs such as a preceding command evaluator's preview URL. Model judges receive only declared artifacts and retain provider/model, sampling, rubric, prompt, input digests, usage, raw redacted responses, and repair count as provenance.
+Command evaluators receive permission-hardened, tamper-evident sealed evaluator inputs at `/benchmark` and `/submission` and are instructed to write outputs under `/result`. This is permission hardening plus post-run tamper detection, not a guarantee that privileged code cannot write elsewhere in the VM. A canonical path/size/SHA-256 manifest is checked after the entire dependent evaluator graph finishes; any mutation is an evaluator error and invalidates the score. Network is disabled with a fresh Linux network namespace unless the benchmark explicitly enables it; evaluation fails closed when the runtime cannot provide that namespace. On Solari, a network-only namespace with all capabilities dropped is used when nested user namespaces are unsupported. The bundled trusted Raft pack retains its explicit network-enabled policy. HTTP and recorded-browser evaluators target verifier-owned outputs such as a preceding command evaluator's preview URL. Model judges receive only declared artifacts and retain provider/model, sampling, rubric, prompt, input digests, usage, raw redacted responses, and repair count as provenance.
 
 ## Raft paper-reproduction pack
 
@@ -111,7 +111,7 @@ Command evaluators receive permission-hardened, tamper-evident sealed evaluator 
 
 The included reference submission is a dependency-free executable model of the paper's election, replication, partition, recovery, and divergent-log-repair subset—not a production Raft implementation. The verifier runs every scenario twice, derives claims from JSONL events instead of trusting the reported summary, and publishes a static trace viewer through an evaluator-owned Solari browser preview.
 
-Validate the pack without provisioning anything, then create a public certificate with live Solari sandbox and browser evidence:
+Validate the pack without provisioning anything, then optionally attempt live certification with Solari sandbox and browser evidence. The second command provisions resources and writes a local report; it does not publish anything or guarantee certification. See [current Raft status](examples/packs/raft-consensus-reproduction/certification/STATUS.md) before making a success claim:
 
 ```powershell
 $env:AGENTBENCH_BENCHMARK_ROOTS = "examples/packs/raft-consensus-reproduction"
@@ -131,11 +131,11 @@ To discover additional packs, set `AGENTBENCH_BENCHMARK_ROOTS` to a platform-del
 $env:AGENTBENCH_BENCHMARK_ROOTS = "benchmarks/tutorials/agentbench-live;D:\benchmarks\my-pack"
 ```
 
-Relative entries resolve from the `agentbench-live` project directory. Surrounding whitespace and empty entries are ignored, duplicate resolved roots keep their first position, and an unset or empty value selects only the bundled tutorial. Invalid packs return a typed `benchmark_invalid` result without exposing configured absolute roots; unknown selections return `unknown_benchmark`, `unknown_task`, or `unknown_agent`.
+Relative entries resolve from the `agentbench-live` project directory. Surrounding whitespace and empty entries are ignored, duplicate resolved roots keep their first position, and an unset or empty value selects both the tutorial and Raft packs. An explicit value replaces those defaults: older local environment files that name only the tutorial will hide Raft. The dashboard also discovers saved writable Studio packs. Invalid packs return a typed `benchmark_invalid` result without exposing configured absolute roots; unknown selections return `unknown_benchmark`, `unknown_task`, or `unknown_agent`.
 
 ## ChatGPT subscription vs API billing
 
-AgentBench invokes the local Codex CLI and uses its existing ChatGPT sign-in. It does not need an OpenAI API key and does not place ChatGPT credentials inside a Solari VM, environment file, artifact, or public JSON document.
+The Codex provider invokes the Codex SDK and its native executable using the existing local ChatGPT sign-in. This path does not need an OpenAI API key and does not package ChatGPT credentials into a Solari VM, benchmark file, or public report. Other providers have their own credential requirements.
 
 The ChatGPT subscription covers Codex according to the signed-in account’s current usage policy. Solari is separate: browser, sandbox, desktop, proxy, and captcha usage draw from the Solari account’s credit balance. Check the current rates and balance in the Solari console before starting a live matrix.
 
@@ -167,7 +167,7 @@ npm run agentbench -- run --task url-shortener --agent sol-low
 npm run agentbench -- run --benchmark agentbench-live --task same-stats-different-graph --agent luna-high
 ```
 
-Run the complete two-agent by two-task matrix. The command prints the maximum browser, sandbox, desktop, and total time before the required confirmation:
+Run the tutorial's complete two-agent by two-task matrix (Raft is a separate pack, not part of this matrix). The command prints the maximum browser, sandbox, desktop, and total time before the required confirmation:
 
 ```powershell
 npm run agentbench -- matrix --concurrency 1 --yes
@@ -192,6 +192,24 @@ npm run agentbench -- demo:seed
 
 ## Evidence and scoring
 
+Bundled packs v1.1 use a **five-minute target and 15-minute hard cap**. Work
+may continue past the target; the hard cap still cancels it. The quality score
+stays unchanged. A separate time-adjusted score is
+`quality × min(1, targetMs / elapsedMs)`, rounded to two decimals. Thus a
+perfect ten-minute run scores 100 quality and 50 time-adjusted. Elapsed time
+includes planning, generation, independent evaluation, and cleanup, but not
+queue time. Invalid or incomplete runs do not get a time-adjusted score.
+Custom packs opt in with `resources.budget.targetMinutes`; `totalMinutes`
+remains the hard limit. Old runs without this policy are not rescored, and
+different task snapshots must not be treated as directly comparable.
+
+Browser verification connects through Solari's CDP default context, releases
+the session, then downloads its recorded events. Replay JSON is redacted and
+retained in the local evidence manifest alongside screenshots; it does not
+depend on an expiring download URL. This is a recording-data download, not
+an embedded player or an MP4. Sandbox stdout/stderr and input-integrity checks
+are retained; a sandbox terminal video is not currently recorded.
+
 Every enabled evaluator contributes its declared share of 100 points. Results preserve `passed`, `failed`, `error`, and `skipped` as distinct states. Evidence is redacted before SHA-256 hashing, deduplicated in `.agentbench/evidence/sha256`, and indexed by immutable per-run manifests. SQLite also stores normalized evaluator results, assertions, and references so failed and invalid-score runs remain inspectable.
 
 The URL Shortener tutorial performs static contract checks, starts the submitted application in a fresh network-enabled sandbox, and verifies its stable UI selectors in a recorded Solari browser. The research tutorial runs the exact seeded CLI twice without network access, checks byte reproducibility, recomputes sample means, sample variances, Pearson correlation, and ellipse RMSE, and scores each finding independently.
@@ -199,11 +217,12 @@ The URL Shortener tutorial performs static contract checks, starts the submitted
 ## Security model
 
 - `.env.local`, run databases, workspaces, and raw artifacts are gitignored.
-- Codex uses `--ephemeral`; its authentication cache is never packaged.
+- Codex's local authentication cache is never packaged. Do not assume SDK session logs are ephemeral; local Codex session history may remain outside the repository.
 - `SOLARI_API_KEY` reaches subprocesses through the environment only.
 - Submitted paths are canonicalized; symlinks, traversal, credential files, dependency caches, oversized files, and secret patterns are rejected.
 - Logs redact Solari keys, bearer values, signed Solari URLs, and sensitive local paths before persistence and again at the SSE boundary.
-- Public demo JSON deliberately omits replay URLs because Starter replay retention is temporary. Permanent PNGs remain reviewable after a replay expires.
+- Live replay JSON is downloaded locally; screenshots and replay artifacts remain available while their local evidence store is retained. Synthetic demo artifacts are not live evidence.
+- Evaluator reports are redacted before repository writes and on reads of older records. Historical local database rows may still contain released signed preview URLs; do not publish the raw database.
 - The MVP is a trusted local operator tool, not a multi-tenant hosted execution service.
 
 ## Tests
@@ -227,7 +246,7 @@ Do not repeatedly retry a live command after an insufficient-credit response. To
 
 ## Demo evidence
 
-Files under `public/demo/` are representative, deterministic seed artifacts generated by `demo:seed`; they are not presented as a completed paid Solari run. Once live verification succeeds, the same exporter can publish verifier-owned screenshots and redacted run DTOs without changing dashboard URLs or exposing temporary replay links.
+Files under `public/demo/` are representative, deterministic seed artifacts generated by `demo:seed`; they are not completed Solari runs. `demo:seed` generates synthetic data, not an export of the latest live batch. Live records and evidence are local and gitignored; publishing them requires a separate reviewed export. See the [verification record](docs/evidence-verification.md) for the latest observed successes and failures.
 
 ## How AI was used
 

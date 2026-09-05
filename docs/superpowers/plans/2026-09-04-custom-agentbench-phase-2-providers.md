@@ -1,5 +1,9 @@
 # Agent Providers and Credentials Implementation Plan
 
+> Historical design/plan. For shipped behavior, current budgets, verified results
+> and known limitations, see the [current implementation guide](../../../agentbench-live/docs/current-state.md).
+> This document preserves earlier intent; it is not a release or live certificate.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Run Codex, executable agent harnesses, Anthropic, and OpenAI-compatible APIs through one lifecycle with named local credentials and normalized live events.

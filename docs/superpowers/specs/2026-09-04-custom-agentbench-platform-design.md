@@ -1,5 +1,9 @@
 # Custom AgentBench Platform Design
 
+> Historical design/plan. For shipped behavior, current budgets, verified results
+> and known limitations, see the [current implementation guide](../../../agentbench-live/docs/current-state.md).
+> This document preserves earlier intent; it is not a release or live certificate.
+
 **Status:** Approved design
 
 **Date:** 2026-09-04

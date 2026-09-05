@@ -1,5 +1,9 @@
 # Evaluator Pipeline and Evidence Implementation Plan
 
+> Historical design/plan. For shipped behavior, current budgets, verified results
+> and known limitations, see the [current implementation guide](../../../agentbench-live/docs/current-state.md).
+> This document preserves earlier intent; it is not a release or live certificate.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace task-specific verifier dispatch with weighted deterministic and model-judge evaluators that produce auditable, content-addressed evidence.

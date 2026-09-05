@@ -1,5 +1,9 @@
 # AgentBench Live Submission Hardening Design
 
+> Historical design/plan. For shipped behavior, current budgets, verified results
+> and known limitations, see the [current implementation guide](../../../agentbench-live/docs/current-state.md).
+> This document preserves earlier intent; it is not a release or live certificate.
+
 ## Objective
 
 Turn the reviewer feedback into verifiable product and trust improvements without expanding AgentBench Live into a hosted multi-tenant service. The release must state its audience clearly, make command-evaluator inputs tamper-evident, keep deterministic evidence authoritative by default, prove Studio packs use the production pipeline, and publish one externally discovered research-pack certification.

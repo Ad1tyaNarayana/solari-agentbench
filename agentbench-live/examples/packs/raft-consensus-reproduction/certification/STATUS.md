@@ -1,30 +1,45 @@
-# Live certification status
+# Raft live certification status
 
-Last checked: 2026-09-05 (Asia/Calcutta).
+Updated September 5, 2026 against the local working tree.
 
-The reference submission passes the live Solari command evaluator, including the
-Raft scenario assertions. The recorded browser executes its action sequence, but
-Solari does not return replay evidence after session release and bounded polling.
-Certification consequently reports an invalid score and does not issue a live
-certificate. This is not a completed certification or an agent-generated result.
+**No successful current live Raft certificate is established.** Keep reference
+certification and model-generated task results separate.
 
-The SDK's `BrowserSession.close()` already calls `releaseAndWait`. The evaluator
-allows two seconds for recording events to flush before closing, then polls for
-replay availability. Further investigation should establish why the recording is
-unavailable, including whether recording covers the browser context used by the
-SDK. Increasing timeouts alone has not established a solution.
+## Earlier reference attempt
 
-The live checks exposed and fixed missing verifier files in the benchmark
-snapshot, CRLF shell entrypoints on Windows, preview health checks dropping the
-signed query, and unobserved background command completion on sandbox shutdown.
-Solari preview tokens are redacted from public output.
+The reference passed live command/scenario checks, but browser replay could not
+be retrieved after release and bounded polling. That attempt remains invalid,
+not a completed certificate.
 
-This pack explicitly enables network access because the tested Solari sandbox
-does not support the evaluator's nested network namespace. It therefore does not
-demonstrate network-isolated reproduction. Network-denied tasks still fail closed
-when the runtime cannot provide isolation.
+The shared browser adapter now creates recorded sessions, connects through CDP,
+uses the default context, releases, and downloads events into the local evidence
+store. This was verified on URL Shortener, not through a new successful Raft
+reference certification. The shared fix does not retroactively certify Raft.
 
-Local verification: 451 tests passed, four skipped; TypeScript, ESLint, and the
-Next.js production build passed. The final compute inventory was empty. The
-browser inventory endpoint could not be verified, so a global browser-leak claim
-is not made. Credentials and raw run evidence remain in Git-ignored local files.
+## Latest model attempt
+
+Pack v1.1.0, run `6d9ca115-4a6b-490f-8d0e-55da11b992f0`, agent `raft-codex`
+(`gpt-5.6-sol`, high reasoning): provider timeout at 900,113 ms before independent
+evaluation. No quality score, time-adjusted score or verifier manifest. Agent
+messages are not substitutes for those missing results. Zero cleanup issues
+were reported.
+
+Current policy is a five-minute target / 15-minute cap. The configured verifier
+uses deterministic fault/trace checks and a recorded browser, with no model judge.
+
+## Isolation and publication
+
+This pack explicitly enables evaluator networking; it is not an offline
+demonstration. The shared evaluator now supports a capability-dropped network
+namespace when nested user namespaces are unavailable. Offline tasks still fail
+closed if neither supported isolation path works.
+
+Latest shared-code checks: 496 tests passed, four skipped; TypeScript, ESLint
+and production build passed. Final live inventory checks found zero browsers,
+sandboxes and desktops. These checks are not Raft certification. Credentials and
+raw local records remain gitignored.
+
+See [current state](../../../../docs/current-state.md) and
+[detailed verification](../../../../docs/evidence-verification.md). Re-run the
+README's explicit certification workflow before claiming a new certificate.
+It provisions billable resources and was not rerun for this documentation update.

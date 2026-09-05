@@ -1,5 +1,9 @@
 # AgentBench Live Design
 
+> Historical design/plan. For shipped behavior, current budgets, verified results
+> and known limitations, see the [current implementation guide](../../../agentbench-live/docs/current-state.md).
+> This document preserves earlier intent; it is not a release or live certificate.
+
 ## Summary
 
 AgentBench Live is a public, evidence-first benchmark for coding and research
