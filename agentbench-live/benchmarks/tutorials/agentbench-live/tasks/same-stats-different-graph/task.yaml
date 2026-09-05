@@ -6,12 +6,12 @@ fixtures: [fixtures/seed.csv]
 resources:
   allowed: [sandbox, browser]
   planningRequired: true
-  budget: { browserSessions: 1, sandboxes: 1, desktops: 0, totalMinutes: 5 }
+  budget: { browserSessions: 1, sandboxes: 1, desktops: 0, totalMinutes: 15, targetMinutes: 5 }
 submission: { directory: submission, required: [source/reproduce.py, source/requirements.txt, methodology.md, results.json, provenance.json] }
 evaluators:
   - { id: source, type: file, weight: 5, config: { subject: source/reproduce.py, assertion: present } }
   - { id: results, type: schema, weight: 10, config: { subject: results.json, schema: evaluators/results.schema.json } }
-  - { id: methodology, type: file, weight: 10, config: { subject: methodology.md, assertion: regex, value: "(?m)^# Seed$[\\s\\S]*^# Objective Function$[\\s\\S]*^# Temperature Schedule$[\\s\\S]*^# Acceptance Rule$", flags: m } }
+  - { id: methodology, type: file, weight: 10, config: { subject: methodology.md, assertion: regex, value: "^# Seed$[\\s\\S]*^# Objective Function$[\\s\\S]*^# Temperature Schedule$[\\s\\S]*^# Acceptance Rule$", flags: m } }
   - id: reproduce
     type: command
     weight: 25

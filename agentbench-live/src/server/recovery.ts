@@ -3,7 +3,7 @@ import type { RunEventBus } from "@/core/events/run-events";
 import type { RunRepository } from "@/core/persistence/repository";
 import { redact } from "@/core/security/redact";
 
-const terminalStages = new Set<RunStage>(["completed", "failed"]);
+const terminalStages = new Set<RunStage>(["completed", "failed", "cancelled"]);
 
 function recoveryFailureCode(stage: RunStage): FailureCode {
   if (stage === "loading" || stage === "preflight") return "preflight_failed";

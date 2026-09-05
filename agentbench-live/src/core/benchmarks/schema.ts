@@ -53,8 +53,9 @@ const resourceBudgetSchema = z
     sandboxes: z.number().int().min(0),
     desktops: z.number().int().min(0),
     totalMinutes: z.number().int().min(0),
+    targetMinutes: z.number().positive().optional(),
   })
-  .strict();
+  .strict().refine(value => value.targetMinutes === undefined || value.targetMinutes <= value.totalMinutes, "time target must not exceed the hard limit");
 
 const resourcesSchema = z
   .object({

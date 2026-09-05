@@ -1,6 +1,6 @@
 # AgentBench Live — current implementation
 
-Updated September 5, 2026 against the local working tree. This overview summarizes
+Updated September 5, 2026 for the reviewed implementation release. This overview summarizes
 the implemented platform and observed local results.
 
 AgentBench runs configurable coding and research benchmarks with independent
@@ -12,6 +12,10 @@ statistics reproduction for both configurations, and browser checks that caught
 URL Shortener deployment failures after agent-reported success. Captured artifacts
 passed download, size and hash checks. **Raft has not passed:** its latest results
 schema failure prevented reproduction and browser verification.
+
+**[Inspect the public evidence excerpt](review-evidence/README.md):** original
+browser screenshots, selected assertions, scores, integrity reports and a short
+walkthrough. No credentials, installation or paid run required.
 
 ## Implemented platform
 
@@ -93,8 +97,9 @@ universal winner. Earlier failures remain in the history.
 
 Tutorial snapshot: `eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee`.
 Run IDs, artifact checks and earlier attempts are in the
-[verification record](evidence-verification.md). These results are local, not
-public certificates or an automatically exported dataset.
+[verification record](evidence-verification.md). A reviewed subset is published
+in the [evidence excerpt](review-evidence/results.json); the raw database stays
+private. This is an author-published record, not third-party certification.
 
 **Raft replication remains unverified.** The single follow-up attempt
 `7e5cda2b-544d-4fb6-8765-40e67c466f30` finished in 592,394 ms with **10 quality /
@@ -145,8 +150,10 @@ reviewed summaries, never credential stores or raw databases.
 
 ## Verification and privacy
 
-Latest implementation verification: 496 tests passed, four skipped; TypeScript,
-ESLint and production build passed. URL/statistics artifact downloads returned
+Release verification on September 5: 499 tests passed, four skipped; TypeScript,
+ESLint and production build passed. The staged-file secret scan and 35 local
+documentation links passed checks. No paid runs were started for this release.
+In the preceding live batch, URL/statistics artifact downloads returned
 HTTP 200 with matching sizes and hashes. Final inventory checks returned zero
 browsers, sandboxes and desktops at the end of that batch.
 

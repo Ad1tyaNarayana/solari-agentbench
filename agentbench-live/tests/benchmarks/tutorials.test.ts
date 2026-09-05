@@ -10,7 +10,17 @@ import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { agents as legacyAgents } from "@/core/tasks/registry";
 import { sameStatsSeedCsv, sameStatsTask } from "@/core/tasks/same-stats";
 import { urlShortenerTask } from "@/core/tasks/url-shortener";
+import { FileEvaluator } from "@/core/evaluators/file";
+import type { EvaluatorContext } from "@/core/evaluators/types";
 const pack = join(process.cwd(), "benchmarks/tutorials/agentbench-live");
+
+it("grades the real statistics methodology headings with a valid JavaScript regex", async () => {
+  const loaded = await new BenchmarkLoader(await mkdtemp(join(tmpdir(), "stats-regex-"))).load(pack);
+  const definition = loaded.definition.tasks.find(t => t.id === "same-stats-different-graph")!.evaluators.find(e => e.id === "methodology")!;
+  const evaluate = (contents: string) => new FileEvaluator().evaluate(definition, { submission: { entries: { "methodology.md": { kind: "text", contents } } } } as unknown as EvaluatorContext, new AbortController().signal);
+  expect((await evaluate("# Seed\n1729\n# Objective Function\ncircle\n# Temperature Schedule\ncooling\n# Acceptance Rule\nMetropolis\n")).status).toBe("passed");
+  expect((await evaluate("# Seed\n1729\n")).status).toBe("failed");
+});
 
 async function createPackFixture({
   benchmarkId,
@@ -70,16 +80,19 @@ evaluators:
 }
 
 describe("migrated tutorial benchmark", () => {
-  it("documents the audience, trust boundary, deterministic tutorials, and Raft certification", async () => {
+  it("documents the workbench, trust boundary, deterministic tutorials, and Raft status", async () => {
     const readme = await readFile(join(process.cwd(), "README.md"), "utf8");
     const repositoryReadme = await readFile(join(process.cwd(), "..", "README.md"), "utf8");
-    expect(readme).toMatch(/engineering leads[\s\S]*hiring teams/i);
-    expect(readme).toMatch(/sealed evaluator inputs/i);
+    expect(readme).toMatch(/local-first evaluation workbench/i);
+    expect(readme).toMatch(/permission-hardened input trees[\s\S]*tamper detection/i);
+    expect(readme).toMatch(/Raft Safety Under Faults[^\n]*Has not passed/);
+    expect(readme).toMatch(/fallback keeps networking isolated[\s\S]*both probes fail/);
     expect(readme).toMatch(/zero.*model-judge/i);
     expect(readme).toContain("raft-consensus-reproduction");
     expect(readme).toContain("agentbench -- certify");
     expect(readme).toMatch(/Studio[\s\S]*same[\s\S]*snapshot[\s\S]*evaluator/i);
-    expect(repositoryReadme).toContain("raft-consensus-reproduction");
+    expect(repositoryReadme).toContain("Raft has not passed");
+    expect(repositoryReadme).toContain("agentbench-live/docs/current-state.md");
   });
 
   it("keeps both bundled tutorials deterministic with zero model-judge points", async () => {
@@ -93,19 +106,17 @@ describe("migrated tutorial benchmark", () => {
   it("projects canonical files to generic evaluator task and agent contracts", async () => {
     const catalog = new BenchmarkCatalog([pack], new BenchmarkLoader(await mkdtemp(join(tmpdir(), "agentbench-tutorial-snapshots-"))));
     const loaded = await catalog.getBenchmark("agentbench-live");
-    expect(loaded.definition.version).toBe("1.0.0");
+    expect(loaded.definition.version).toBe("1.1.0");
     expect(loaded.definition.tasks.map(({ id }) => id)).toEqual(["same-stats-different-graph", "url-shortener"]);
     for (const tutorial of [urlShortenerTask, sameStatsTask]) {
       const task = await catalog.getTask(tutorial.id);
-      expect(task).toMatchObject({ id: tutorial.id, version: tutorial.version, title: tutorial.title, prompt: tutorial.prompt, allowedPrimitives: tutorial.allowedPrimitives });
+      const canonicalPrompt = await readFile(join(pack, "tasks", tutorial.id, "prompt.md"), "utf8");
+      expect(task).toMatchObject({ id: tutorial.id, version: "1.1.0", title: tutorial.title, prompt: canonicalPrompt, allowedPrimitives: tutorial.allowedPrimitives, budget: { targetMs: 300000, totalMs: 900000 } });
       expect(task.verifier).toBeUndefined();
       expect(task.evaluators?.reduce((sum, evaluator) => sum + (evaluator.enabled ? evaluator.weight : 0), 0)).toBe(100);
     }
-    const urlPrompt = await readFile(join(pack, "tasks/url-shortener/prompt.md"), "utf8");
     const statsPrompt = await readFile(join(pack, "tasks/same-stats-different-graph/prompt.md"), "utf8");
-    expect(urlPrompt).toBe(urlShortenerTask.prompt);
     expect(statsPrompt).toBe(sameStatsTask.prompt);
-    expect(urlPrompt.endsWith("\n")).toBe(false);
     expect(statsPrompt.endsWith("\n")).toBe(false);
     expect(await catalog.listAgents()).toEqual(legacyAgents.map((agent) => ({ ...agent })).sort((a, b) => a.id.localeCompare(b.id)));
     const seed = await readFile(join(pack, "tasks/same-stats-different-graph/fixtures/seed.csv"), "utf8");

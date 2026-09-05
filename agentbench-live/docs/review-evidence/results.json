@@ -1,0 +1,931 @@
+{
+  "schemaVersion": 1,
+  "kind": "reviewed-historical-live-run-excerpt",
+  "exportDate": "2026-09-05",
+  "targetMs": 300000,
+  "hardCapMs": 900000,
+  "omitted": "Raw database, credentials, logs, free-text assertions, URLs, paths and replay DOM are excluded. Artifact hashes describe retained source bytes, not a third-party certificate.",
+  "runs": [
+    {
+      "runId": "206605e5-7870-4d32-888e-f6926834f595",
+      "taskId": "url-shortener",
+      "agentId": "sol-low",
+      "model": "gpt-5.6-sol",
+      "benchmarkDigest": "eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee",
+      "startedAt": "2026-09-04T21:00:10.271Z",
+      "completedAt": "2026-09-04T21:05:52.429Z",
+      "durationMs": 342158,
+      "evaluationStatus": "valid-score",
+      "quality": 73.33,
+      "timeAdjusted": 64.29,
+      "evaluators": [
+        {
+          "id": "source",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "source.present",
+              "passed": true,
+              "observed": 278
+            }
+          ]
+        },
+        {
+          "id": "results",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "results.schema",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "methodology",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "methodology.min-bytes",
+              "passed": true,
+              "observed": 1113,
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "id": "serve",
+          "status": "passed",
+          "earnedPoints": 30,
+          "possiblePoints": 30,
+          "assertions": [
+            {
+              "id": "serve.health",
+              "passed": true
+            },
+            {
+              "id": "serve.input-integrity",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "browser",
+          "status": "failed",
+          "earnedPoints": 13.333333333333332,
+          "possiblePoints": 40,
+          "assertions": [
+            {
+              "id": "browser.4",
+              "passed": true
+            },
+            {
+              "id": "browser.6",
+              "passed": false
+            },
+            {
+              "id": "browser.7",
+              "passed": false
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "role": "input-integrity",
+          "sha256": "545e062a382894a109d4f96328ccc331c979e5e1f1330c795907cf5f3721f921",
+          "bytes": 112,
+          "mimeType": "application/json",
+          "inputIntegrity": {
+            "schemaVersion": 1,
+            "ok": true,
+            "expectedFileCount": 21,
+            "observedFileCount": 21,
+            "added": [],
+            "deleted": [],
+            "changed": []
+          }
+        },
+        {
+          "role": "service-stdout",
+          "sha256": "c4426d807e1f26f97a0644a52f1f99a99f41e146ea9b12b75aaf8a55be7bfbff",
+          "bytes": 300,
+          "mimeType": "text/plain"
+        },
+        {
+          "role": "browser-replay",
+          "sha256": "c8c038bbe2f111c24b92e802e10355d3ab1406b3d0dc252fcc25f6d0b60f18f7",
+          "bytes": 10929,
+          "mimeType": "application/json",
+          "replayExcerpt": {
+            "eventCount": 21,
+            "events": [
+              {
+                "type": 4,
+                "elapsedMs": 0
+              },
+              {
+                "type": 2,
+                "elapsedMs": 12
+              },
+              {
+                "type": 0,
+                "elapsedMs": 952
+              },
+              {
+                "type": 1,
+                "elapsedMs": 952
+              },
+              {
+                "type": 4,
+                "elapsedMs": 952
+              },
+              {
+                "type": 2,
+                "elapsedMs": 966
+              },
+              {
+                "type": 3,
+                "elapsedMs": 2998
+              },
+              {
+                "type": 3,
+                "elapsedMs": 3225
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5166
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5166
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5167
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5167
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5167
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5167
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5168
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5170
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5479
+              },
+              {
+                "type": 3,
+                "elapsedMs": 7682
+              },
+              {
+                "type": 3,
+                "elapsedMs": 10441
+              },
+              {
+                "type": 3,
+                "elapsedMs": 11501
+              },
+              {
+                "type": 3,
+                "elapsedMs": 12914
+              }
+            ],
+            "omitted": "All event payloads (DOM, text, network addresses) are excluded; this is not a playable replay."
+          }
+        },
+        {
+          "role": "browser-result",
+          "sha256": "de115207826465268c3325d9a11d69ab64e980916a198c6dc8c9b20bb12e0bfa",
+          "bytes": 90069,
+          "mimeType": "image/png"
+        },
+        {
+          "role": "redirect-destination",
+          "sha256": "de115207826465268c3325d9a11d69ab64e980916a198c6dc8c9b20bb12e0bfa",
+          "bytes": 90069,
+          "mimeType": "image/png"
+        },
+        {
+          "role": "service-stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "mimeType": "text/plain"
+        }
+      ]
+    },
+    {
+      "runId": "7442a84e-f733-4cd9-98b6-15a5556c3de0",
+      "taskId": "url-shortener",
+      "agentId": "luna-high",
+      "model": "gpt-5.6-luna",
+      "benchmarkDigest": "eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee",
+      "startedAt": "2026-09-05T16:15:09.334Z",
+      "completedAt": "2026-09-05T16:22:05.310Z",
+      "durationMs": 415976,
+      "evaluationStatus": "valid-score",
+      "quality": 73.33,
+      "timeAdjusted": 52.89,
+      "evaluators": [
+        {
+          "id": "source",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "source.present",
+              "passed": true,
+              "observed": 284
+            }
+          ]
+        },
+        {
+          "id": "results",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "results.schema",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "methodology",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "methodology.min-bytes",
+              "passed": true,
+              "observed": 785,
+              "expected": 1
+            }
+          ]
+        },
+        {
+          "id": "serve",
+          "status": "passed",
+          "earnedPoints": 30,
+          "possiblePoints": 30,
+          "assertions": [
+            {
+              "id": "serve.health",
+              "passed": true
+            },
+            {
+              "id": "serve.input-integrity",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "browser",
+          "status": "failed",
+          "earnedPoints": 13.333333333333332,
+          "possiblePoints": 40,
+          "assertions": [
+            {
+              "id": "browser.4",
+              "passed": true
+            },
+            {
+              "id": "browser.6",
+              "passed": false
+            },
+            {
+              "id": "browser.7",
+              "passed": false
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "role": "service-stdout",
+          "sha256": "189b59a1720c63faac141d8cec9a54e0893afcad5ab0e3c5fb81c4e1611de54c",
+          "bytes": 301,
+          "mimeType": "text/plain"
+        },
+        {
+          "role": "input-integrity",
+          "sha256": "545e062a382894a109d4f96328ccc331c979e5e1f1330c795907cf5f3721f921",
+          "bytes": 112,
+          "mimeType": "application/json",
+          "inputIntegrity": {
+            "schemaVersion": 1,
+            "ok": true,
+            "expectedFileCount": 21,
+            "observedFileCount": 21,
+            "added": [],
+            "deleted": [],
+            "changed": []
+          }
+        },
+        {
+          "role": "browser-replay",
+          "sha256": "d9209a8b99a3cfb37b135afd6cbfc1f4969a028af90392fb5b2cc1f8763fba9a",
+          "bytes": 15013,
+          "mimeType": "application/json",
+          "replayExcerpt": {
+            "eventCount": 21,
+            "events": [
+              {
+                "type": 4,
+                "elapsedMs": 0
+              },
+              {
+                "type": 2,
+                "elapsedMs": 11
+              },
+              {
+                "type": 0,
+                "elapsedMs": 969
+              },
+              {
+                "type": 1,
+                "elapsedMs": 969
+              },
+              {
+                "type": 4,
+                "elapsedMs": 969
+              },
+              {
+                "type": 2,
+                "elapsedMs": 986
+              },
+              {
+                "type": 3,
+                "elapsedMs": 3463
+              },
+              {
+                "type": 3,
+                "elapsedMs": 3696
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5561
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5562
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5562
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5562
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5563
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5563
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5563
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5565
+              },
+              {
+                "type": 3,
+                "elapsedMs": 5810
+              },
+              {
+                "type": 3,
+                "elapsedMs": 8209
+              },
+              {
+                "type": 3,
+                "elapsedMs": 11421
+              },
+              {
+                "type": 3,
+                "elapsedMs": 12854
+              },
+              {
+                "type": 3,
+                "elapsedMs": 14724
+              }
+            ],
+            "omitted": "All event payloads (DOM, text, network addresses) are excluded; this is not a playable replay."
+          }
+        },
+        {
+          "role": "service-stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "mimeType": "text/plain"
+        },
+        {
+          "role": "browser-result",
+          "sha256": "f6358d794a9c98c6c6eb81e51a00e311a1821e8b7e88362721444f315962d73e",
+          "bytes": 41598,
+          "mimeType": "image/png"
+        },
+        {
+          "role": "redirect-destination",
+          "sha256": "f6358d794a9c98c6c6eb81e51a00e311a1821e8b7e88362721444f315962d73e",
+          "bytes": 41598,
+          "mimeType": "image/png"
+        }
+      ]
+    },
+    {
+      "runId": "df0c80ab-bbae-44f3-b54b-624b5e09595c",
+      "taskId": "same-stats-different-graph",
+      "agentId": "sol-low",
+      "model": "gpt-5.6-sol",
+      "benchmarkDigest": "eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee",
+      "startedAt": "2026-09-04T21:20:52.542Z",
+      "completedAt": "2026-09-04T21:23:20.140Z",
+      "durationMs": 147598,
+      "evaluationStatus": "valid-score",
+      "quality": 100,
+      "timeAdjusted": 100,
+      "evaluators": [
+        {
+          "id": "source",
+          "status": "passed",
+          "earnedPoints": 5,
+          "possiblePoints": 5,
+          "assertions": [
+            {
+              "id": "source.present",
+              "passed": true,
+              "observed": 6645
+            }
+          ]
+        },
+        {
+          "id": "results",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "results.schema",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "methodology",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "methodology.regex",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "reproduce",
+          "status": "passed",
+          "earnedPoints": 25,
+          "possiblePoints": 25,
+          "assertions": [
+            {
+              "id": "reproducible",
+              "passed": true
+            },
+            {
+              "id": "reproduce.input-integrity",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "mean-x",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "mean-x.absolute-tolerance",
+              "passed": true,
+              "observed": 54.269999999999996,
+              "expected": 54.27
+            }
+          ]
+        },
+        {
+          "id": "mean-y",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "mean-y.absolute-tolerance",
+              "passed": true,
+              "observed": 47.839999999999996,
+              "expected": 47.84
+            }
+          ]
+        },
+        {
+          "id": "variance-x",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "variance-x.absolute-tolerance",
+              "passed": true,
+              "observed": 280.9000000458056,
+              "expected": 280.9
+            }
+          ]
+        },
+        {
+          "id": "variance-y",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "variance-y.absolute-tolerance",
+              "passed": true,
+              "observed": 725.2300000033355,
+              "expected": 725.23
+            }
+          ]
+        },
+        {
+          "id": "correlation",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "correlation.absolute-tolerance",
+              "passed": true,
+              "observed": -0.07000000004415174,
+              "expected": -0.07
+            }
+          ]
+        },
+        {
+          "id": "circle",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "circle.absolute-tolerance",
+              "passed": true,
+              "observed": 0.32494711905189405,
+              "expected": 0
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "role": "input-integrity",
+          "sha256": "22508ceb2f54a7b971feafb68b051e4d77e7e48962d95d23871ab8f0cfe1db4e",
+          "bytes": 112,
+          "mimeType": "application/json",
+          "inputIntegrity": {
+            "schemaVersion": 1,
+            "ok": true,
+            "expectedFileCount": 16,
+            "observedFileCount": 16,
+            "added": [],
+            "deleted": [],
+            "changed": []
+          }
+        },
+        {
+          "role": "stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "mimeType": "text/plain"
+        },
+        {
+          "role": "stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "mimeType": "text/plain"
+        }
+      ]
+    },
+    {
+      "runId": "8d934b6e-f311-42a8-87da-9af2002d6a1c",
+      "taskId": "same-stats-different-graph",
+      "agentId": "luna-high",
+      "model": "gpt-5.6-luna",
+      "benchmarkDigest": "eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee",
+      "startedAt": "2026-09-05T16:22:05.317Z",
+      "completedAt": "2026-09-05T16:27:42.595Z",
+      "durationMs": 337278,
+      "evaluationStatus": "valid-score",
+      "quality": 100,
+      "timeAdjusted": 88.95,
+      "evaluators": [
+        {
+          "id": "source",
+          "status": "passed",
+          "earnedPoints": 5,
+          "possiblePoints": 5,
+          "assertions": [
+            {
+              "id": "source.present",
+              "passed": true,
+              "observed": 12069
+            }
+          ]
+        },
+        {
+          "id": "results",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "results.schema",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "methodology",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "methodology.regex",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "reproduce",
+          "status": "passed",
+          "earnedPoints": 25,
+          "possiblePoints": 25,
+          "assertions": [
+            {
+              "id": "reproducible",
+              "passed": true
+            },
+            {
+              "id": "reproduce.input-integrity",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "id": "mean-x",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "mean-x.absolute-tolerance",
+              "passed": true,
+              "observed": 54.27,
+              "expected": 54.27
+            }
+          ]
+        },
+        {
+          "id": "mean-y",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "mean-y.absolute-tolerance",
+              "passed": true,
+              "observed": 47.839999999999996,
+              "expected": 47.84
+            }
+          ]
+        },
+        {
+          "id": "variance-x",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "variance-x.absolute-tolerance",
+              "passed": true,
+              "observed": 280.9000000458055,
+              "expected": 280.9
+            }
+          ]
+        },
+        {
+          "id": "variance-y",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "variance-y.absolute-tolerance",
+              "passed": true,
+              "observed": 725.2300000033359,
+              "expected": 725.23
+            }
+          ]
+        },
+        {
+          "id": "correlation",
+          "status": "passed",
+          "earnedPoints": 8,
+          "possiblePoints": 8,
+          "assertions": [
+            {
+              "id": "correlation.absolute-tolerance",
+              "passed": true,
+              "observed": -0.070000000044152,
+              "expected": -0.07
+            }
+          ]
+        },
+        {
+          "id": "circle",
+          "status": "passed",
+          "earnedPoints": 10,
+          "possiblePoints": 10,
+          "assertions": [
+            {
+              "id": "circle.absolute-tolerance",
+              "passed": true,
+              "observed": 0.330523778774279,
+              "expected": 0
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "role": "input-integrity",
+          "sha256": "22508ceb2f54a7b971feafb68b051e4d77e7e48962d95d23871ab8f0cfe1db4e",
+          "bytes": 112,
+          "mimeType": "application/json",
+          "inputIntegrity": {
+            "schemaVersion": 1,
+            "ok": true,
+            "expectedFileCount": 16,
+            "observedFileCount": 16,
+            "added": [],
+            "deleted": [],
+            "changed": []
+          }
+        },
+        {
+          "role": "stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "mimeType": "text/plain"
+        },
+        {
+          "role": "stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "mimeType": "text/plain"
+        }
+      ]
+    },
+    {
+      "runId": "7e5cda2b-544d-4fb6-8765-40e67c466f30",
+      "taskId": "raft-safety",
+      "agentId": "raft-codex",
+      "model": "gpt-5.6-sol",
+      "benchmarkDigest": "5861428ea91b94afc8e21c724500b4def60f9fad1c7469c8020930aaabacf268",
+      "startedAt": "2026-09-05T16:27:42.602Z",
+      "completedAt": "2026-09-05T16:37:34.996Z",
+      "durationMs": 592394,
+      "evaluationStatus": "valid-score",
+      "quality": 10,
+      "timeAdjusted": 5.06,
+      "evaluators": [
+        {
+          "id": "run-entry",
+          "status": "passed",
+          "earnedPoints": 5,
+          "possiblePoints": 5,
+          "assertions": [
+            {
+              "id": "run-entry.present",
+              "passed": true,
+              "observed": 210
+            }
+          ]
+        },
+        {
+          "id": "results",
+          "status": "failed",
+          "earnedPoints": 0,
+          "possiblePoints": 5,
+          "assertions": [
+            {
+              "id": "results.schema.1",
+              "passed": false
+            },
+            {
+              "id": "results.schema.2",
+              "passed": false
+            },
+            {
+              "id": "results.schema.3",
+              "passed": false
+            },
+            {
+              "id": "results.schema.4",
+              "passed": false
+            },
+            {
+              "id": "results.schema.5",
+              "passed": false
+            },
+            {
+              "id": "results.schema.6",
+              "passed": false
+            },
+            {
+              "id": "results.schema.7",
+              "passed": false
+            },
+            {
+              "id": "results.schema.8",
+              "passed": false
+            },
+            {
+              "id": "results.schema.9",
+              "passed": false
+            },
+            {
+              "id": "results.schema.10",
+              "passed": false
+            }
+          ]
+        },
+        {
+          "id": "methodology",
+          "status": "passed",
+          "earnedPoints": 5,
+          "possiblePoints": 5,
+          "assertions": [
+            {
+              "id": "methodology.min-bytes",
+              "passed": true,
+              "observed": 2637,
+              "expected": 400
+            }
+          ]
+        },
+        {
+          "id": "verify-raft",
+          "status": "skipped",
+          "earnedPoints": 0,
+          "possiblePoints": 65,
+          "assertions": []
+        },
+        {
+          "id": "inspect-trace",
+          "status": "skipped",
+          "earnedPoints": 0,
+          "possiblePoints": 20,
+          "assertions": []
+        }
+      ],
+      "artifacts": []
+    }
+  ]
+}

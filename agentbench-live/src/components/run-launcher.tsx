@@ -8,9 +8,13 @@ import type { TaskManifest } from "@/core/domain/task";
 export function RunLauncher({
   agents,
   tasks,
+  benchmarkId,
+  benchmarkDigest,
 }: {
   agents: AgentConfig[];
   tasks: TaskManifest[];
+  benchmarkId?: string;
+  benchmarkDigest?: string;
 }) {
   const [taskId, setTaskId] = useState(tasks[0]?.id ?? "");
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
@@ -27,13 +31,14 @@ export function RunLauncher({
       const response = await fetch("/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId, agentId }),
+        body: JSON.stringify({ taskId, agentId, benchmarkId, benchmarkDigest }),
       });
       const body = (await response.json()) as RunRecord | { error?: string };
       if (!response.ok || !("id" in body)) {
         throw new Error("error" in body && body.error ? body.error : "submission_failed");
       }
       setQueued(body);
+      window.dispatchEvent(new Event("agentbench:run-created"));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "submission_failed");
     } finally {
@@ -44,9 +49,8 @@ export function RunLauncher({
   return (
     <form className="launcher" onSubmit={submit}>
       <div className="launcher__intro">
-        <p className="eyebrow">Local control plane</p>
-        <h2>Launch an observed run</h2>
-        <p>Codex uses your local ChatGPT sign-in. Solari resources are created only after the plan validates.</p>
+        <h2>Run configuration</h2>
+        <p>Uses provider allowance and Solari credits. The agent chooses resources after planning.</p>
       </div>
       <label>
         <span>Task</span>
@@ -60,11 +64,11 @@ export function RunLauncher({
           {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.label}</option>)}
         </select>
       </label>
-      <button type="submit" disabled={pending || !taskId || !agentId}>
-        {pending ? "Validating…" : "Start benchmark"}
+      <button type="submit" disabled={pending || Boolean(queued) || !taskId || !agentId}>
+        {pending ? "Validating…" : queued ? "Run queued" : "Start benchmark"}
       </button>
       <div className="launcher__result" aria-live="polite">
-        {queued ? <Link href={`/runs/${queued.id}`}>View queued run →</Link> : null}
+        {queued ? <><Link href={`/runs/${queued.id}`}>View queued run →</Link><button className="launcher__reset" type="button" onClick={() => setQueued(undefined)}>Configure another run</button></> : null}
         {error ? <span>Could not start: {error.replaceAll("_", " ")}</span> : null}
       </div>
     </form>

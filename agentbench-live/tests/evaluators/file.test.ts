@@ -20,3 +20,7 @@ test("rejects traversal and unsafe regex flags", async () => {
   await expect(run({ subject: "../secret", assertion: "present" })).rejects.toThrow(/path/i);
   await expect(run({ subject: "report.txt", assertion: "regex", value: ".", flags: "g" })).rejects.toThrow(/flags/i);
 });
+
+test("rejects malformed regular expressions during evaluator validation", () => {
+  expect(() => new FileEvaluator().validate({ id: "f", type: "file", weight: 1, enabled: true, prerequisites: [], config: { subject: "methodology.md", assertion: "regex", value: "(?m)^# Seed$", flags: "m" } })).toThrow(/regular expression/i);
+});

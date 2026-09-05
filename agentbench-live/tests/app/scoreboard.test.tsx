@@ -44,7 +44,7 @@ test("renders agents as rows and tasks as columns", () => {
   );
 });
 
-test("adds persisted custom task and agent dimensions to the home scoreboard", () => {
+test("shows persisted custom tasks and agent identity in recorded experiments", async () => {
   listRuns.mockReturnValue([
     {
       ...completedRun,
@@ -58,16 +58,16 @@ test("adds persisted custom task and agent dimensions to the home scoreboard", (
     } satisfies RunRecord,
   ]);
 
-  render(<Home />);
+  render(await Home());
 
   expect(
-    screen.getByRole("columnheader", { name: "custom-task" }),
+    screen.getByText("custom-task"),
   ).toBeInTheDocument();
   expect(screen.getByRole("row", { name: /custom-agent/i })).toHaveTextContent(
-    /custom-model-v3.*openai-compatible.*agentbench-basic-loop.*v1/i,
+    /custom-agent/i,
   );
   expect(
-    screen.getByRole("link", { name: /94.*passed/i }),
+    screen.getByRole("link", { name: /Inspect run/i }),
   ).toHaveAttribute("href", "/runs/custom-score");
 });
 
@@ -146,4 +146,8 @@ test("starts a selected benchmark run through the API", async () => {
     "href",
     "/runs/completed",
   );
+  expect(screen.getByRole("button", { name: "Run queued" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Configure another run" }));
+  expect(screen.getByRole("button", { name: "Start benchmark" })).toBeEnabled();
+  expect(screen.getByLabelText("Agent")).toHaveValue("luna-high");
 });

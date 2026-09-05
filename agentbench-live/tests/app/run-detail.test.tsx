@@ -7,9 +7,11 @@ import { StageTimeline } from "@/components/stage-timeline";
 import RunDetailPage from "@/app/runs/[id]/page";
 
 const getRun = vi.hoisted(() => vi.fn());
+const refresh = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }), notFound: () => { throw new Error("not found"); } }));
 
 vi.mock("@/server/container", () => ({
-  getServerContainer: () => ({ getRun }),
+  getServerContainer: () => ({ getRun, listEvents: () => [] }),
 }));
 
 const researchRun: RunRecord = {
@@ -36,6 +38,36 @@ const researchRun: RunRecord = {
   createdAt: "2026-09-01T00:00:00.000Z",
   completedAt: "2026-09-01T00:03:00.000Z",
 };
+
+test("does not claim an expired replay or retained screenshots when no evidence was captured", () => {
+  render(<EvidencePanel run={{ ...researchRun, taskId: "url-shortener", stage: "failed", evidence: {}, sanitizedLogs: [] }} />);
+  expect(screen.getByText(/No evidence was captured/i)).toBeInTheDocument();
+  expect(screen.queryByText(/expired|screenshots remain/i)).not.toBeInTheDocument();
+});
+
+test("distinguishes pending evidence from missing terminal evidence", () => {
+  render(<EvidencePanel run={{ ...researchRun, taskId: "url-shortener", stage: "generating", evidence: {}, sanitizedLogs: [] }} />);
+  expect(screen.getByText(/Evidence has not been captured yet/i)).toBeInTheDocument();
+});
+
+test("recognizes a durable replay in the manifest even without a legacy signed URL", () => {
+  render(<EvidencePanel run={{ ...researchRun, taskId: "url-shortener", evidence: {}, evidenceManifest: { schemaVersion: 1, runId: researchRun.id, taskId: "url-shortener", entries: [{ runId: researchRun.id, taskId: "url-shortener", digest: "a".repeat(64), size: 100, role: "browser-replay", mimeType: "application/json", producer: "evaluator", createdAt: "now", redacted: true }] } }} />);
+  expect(screen.queryByText(/No browser replay is attached/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/Recording saved locally/i)).toBeInTheDocument();
+});
+
+test("labels a live reference check as infrastructure evidence rather than an agent benchmark", async () => {
+  getRun.mockReturnValue({ ...researchRun, harnessId: "reference-infrastructure-check" });
+  render(await RunDetailPage({ params: Promise.resolve({ id: "reference" }) }));
+  expect(screen.getByText(/Not an agent benchmark score/i)).toBeInTheDocument();
+});
+
+test("shows quality separately from the time-adjusted result", async () => {
+  getRun.mockReturnValue({ ...researchRun, primaryScore: 100, score: { total: 100, timeAdjusted: 50 } });
+  render(await RunDetailPage({ params: Promise.resolve({ id: researchRun.id }) }));
+  expect(screen.getByText("Quality score / 100")).toBeInTheDocument();
+  expect(screen.getByText("Time-adjusted score")).toBeInTheDocument();
+});
 
 test("renders persisted custom run identity without requiring tutorial registry entries", async () => {
   getRun.mockReturnValue({
@@ -122,7 +154,7 @@ test("keeps canonical screenshots visible when a replay has expired", () => {
   };
   render(<EvidencePanel run={run} />);
 
-  expect(screen.getByText(/replay is unavailable or has expired/i)).toBeInTheDocument();
+  expect(screen.getByText(/No browser replay is attached/i)).toBeInTheDocument();
   expect(screen.getByRole("img", { name: /browser evidence/i })).toBeInTheDocument();
   expect(screen.getByRole("img", { name: /desktop evidence/i })).toBeInTheDocument();
 });
@@ -187,12 +219,24 @@ test("orders live events and closes the stream at a terminal stage", () => {
   });
 
   const items = screen.getAllByRole("listitem").map((item) => item.textContent);
+  expect(refresh).toHaveBeenCalled();
   expect(items).toEqual([
     expect.stringContaining("planning"),
     expect.stringContaining("generating"),
     expect.stringContaining("completed"),
   ]);
   expect(source.close).toHaveBeenCalledOnce();
+});
+
+test("terminal runs show persisted event history", () => {
+  render(<LiveRun runId="run-1" initialStage="completed" initialEvents={[{ id: 1, kind: "log", payload: { message: "Verifier finished independently" } }]} />);
+  expect(screen.getByText("Verifier finished independently")).toBeInTheDocument();
+});
+
+test("renders generic manifest screenshots through the run-owned artifact route", () => {
+  const digest = "b".repeat(64);
+  render(<EvidencePanel run={{ ...researchRun, evidence: {}, evidenceManifest: { schemaVersion: 1, runId: researchRun.id, taskId: researchRun.taskId, entries: [{ digest, size: 2, mimeType: "image/png", role: "browser-result", producer: "evaluator", runId: researchRun.id, taskId: researchRun.taskId, createdAt: "now", redacted: true }] } }} />);
+  expect(screen.getByRole("img", { name: "browser-result" })).toHaveAttribute("src", `/api/runs/research-1/evidence/${digest}`);
 });
 
 test("labels a terminal run as closed instead of waiting for events", () => {
@@ -210,8 +254,10 @@ test("groups normalized provider events by operator-facing category", () => {
     source.emit("provider_event", { kind: "tool-request", payload: { tool: "sandbox.exec" } }, "1");
     source.emit("provider_event", { kind: "resource-created", payload: { primitive: "sandbox" } }, "2");
     source.emit("provider_event", { kind: "usage", payload: { inputTokens: 10 } }, "3");
+    source.emit("provider_event", { kind: "message", payload: { text: "Building the redirect handler now" } }, "4");
   });
   expect(screen.getByRole("heading", { name: "Local tools" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Solari resources" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Usage" })).toBeInTheDocument();
+  expect(screen.getByText("Building the redirect handler now")).toBeInTheDocument();
 });

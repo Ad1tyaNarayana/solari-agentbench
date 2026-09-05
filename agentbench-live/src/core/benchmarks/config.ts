@@ -11,7 +11,7 @@ export function resolveBenchmarkRoots(
     ?.split(delimiter)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-  const roots = entries?.length ? entries : [DEFAULT_BENCHMARK_ROOT];
+  const roots = entries?.length ? entries : [DEFAULT_BENCHMARK_ROOT, "examples/packs/raft-consensus-reproduction"];
   const seen = new Set<string>();
 
   return roots.flatMap((entry) => {

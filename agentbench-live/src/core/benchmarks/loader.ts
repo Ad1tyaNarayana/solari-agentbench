@@ -104,6 +104,15 @@ export class BenchmarkLoader {
           await loadFile(`${prefix}/${fixture}`);
         }
         for (const evaluator of task.evaluators) {
+          // Absolute guest paths under /benchmark refer to pack-root assets,
+          // not task-relative files. Other argv entries may be output paths,
+          // flags or executable names and must not be guessed as assets.
+          const argv = Array.isArray(evaluator.config.argv) ? evaluator.config.argv : [];
+          for (const argument of argv) {
+            if (typeof argument === "string" && argument.startsWith("/benchmark/")) {
+              await loadFile(argument.slice("/benchmark/".length));
+            }
+          }
           for (const asset of evaluatorAssets(evaluator.type, evaluator.config)) {
             await loadFile(`${prefix}/${asset}`);
           }

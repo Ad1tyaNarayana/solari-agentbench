@@ -59,6 +59,11 @@ const snapshot = {
   files: [],
 };
 
+it("reports missing native SDK binaries during preflight before planning", async () => {
+  const provider = new CodexSdkProvider({ createCodex: () => { throw new Error("Unable to locate Codex CLI binaries"); } });
+  await expect(provider.preflight({ agent, task, snapshot })).rejects.toMatchObject({ code: "preflight_failed" });
+});
+
 const validPlan: RunPlan = {
   primitives: ["sandbox"],
   reason: { sandbox: "build and test in isolation" },
@@ -174,6 +179,21 @@ function recordingSink(): { sink: AgentEventSink; events: AgentEvent[] } {
 }
 
 describe("CodexSdkProvider planning", () => {
+  it("preserves the default Solari credential only for execution and forwards it to MCP", async () => {
+    vi.stubEnv("SOLARI_API_KEY", "fixture-solari-key");
+    vi.stubEnv("UNRELATED_SECRET", "fixture-private");
+    try {
+      const sdk = fakeSdk();
+      const provider = new CodexSdkProvider({ createCodex: sdk.createCodex });
+      await provider.plan(planInput(), new AbortController().signal);
+      expect(sdk.createOptions[0].env).not.toHaveProperty("SOLARI_API_KEY");
+      const execution = await provider.execute(executionInput(), recordingSink().sink, new AbortController().signal);
+      await execution.result;
+      expect(sdk.createOptions[1].env?.SOLARI_API_KEY).toBe("fixture-solari-key");
+      expect(sdk.createOptions[1].env).not.toHaveProperty("UNRELATED_SECRET");
+      expect(sdk.createOptions[1].config).toMatchObject({ mcp_servers: { solari: { env_vars: ["SOLARI_API_KEY"] } } });
+    } finally { vi.unstubAllEnvs(); }
+  });
   it("uses structured output in the read-only snapshot without Solari MCP", async () => {
     const sdk = fakeSdk();
     const provider = new CodexSdkProvider({
@@ -389,7 +409,7 @@ describe("CodexSdkProvider execution", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it("streams the exact snapshotted prompt through the approved Solari config and normalizes events in order", async () => {
+  it("streams the task with its time target, approved plan and packaging contract and normalizes events in order", async () => {
     const sdk = fakeSdk({ events: eventFixture() });
     const provider = new CodexSdkProvider({
       createCodex: sdk.createCodex,
@@ -399,14 +419,17 @@ describe("CodexSdkProvider execution", () => {
     const { sink, events } = recordingSink();
 
     const execution = await provider.execute(
-      executionInput(),
+      { ...executionInput(), task: { ...task, resourceLimits: { ...task.resourceLimits, targetMinutes: 5, totalMinutes: 15 } } },
       sink,
       new AbortController().signal,
     );
     const result = await execution.result;
 
     expect(execution.handle).toEqual({ id: "codex-run-1" });
-    expect(sdk.executions[0].input).toBe(task.prompt);
+    expect(sdk.executions[0].input).toContain(task.prompt);
+    expect(sdk.executions[0].input).toContain("Time target: 5 minutes; hard cap: 15 minutes");
+    expect(sdk.executions[0].input).toContain(JSON.stringify(validPlan, null, 2));
+    expect(sdk.executions[0].input).toContain("Do not leave generated build output or dependency caches in submission/");
     expect(sdk.threadOptions).toEqual([
       expect.objectContaining({
         model: "gpt-5.6-sol",
@@ -619,6 +642,7 @@ describe("CodexSdkProvider metadata and preflight", () => {
     await expect(
       provider.preflight({ agent, task, snapshot }),
     ).resolves.toEqual({ ok: true });
-    expect(sdk.createOptions).toHaveLength(0);
+    expect(sdk.createOptions).toHaveLength(1);
+    expect(sdk.threadOptions).toHaveLength(0);
   });
 });

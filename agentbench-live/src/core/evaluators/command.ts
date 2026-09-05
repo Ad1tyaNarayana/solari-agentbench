@@ -93,6 +93,13 @@ export class CommandEvaluator implements Evaluator {
         producer: "evaluator",
         value: report,
       });
+      const retained = [evidence];
+      if (config.background) {
+        for (const stream of ["stdout", "stderr"]) {
+          const log = await sandbox.exec("head", ["-c", "1048576", `/result/service.${stream}.log`], { timeoutMs: 5000, env: {} });
+          retained.push(await context.evidence.putText({ evaluatorId: definition.id, mimeType: "text/plain", role: `service-${stream}`, producer: "evaluator", text: log.exitCode === 0 ? log.stdout : `Log capture failed: ${log.stderr}` }));
+        }
+      }
       return {
         ok: report.ok,
         summary: report.ok
@@ -105,19 +112,29 @@ export class CommandEvaluator implements Evaluator {
           expected: true,
           observed: report.ok,
         }],
-        evidence: [evidence],
+        evidence: retained,
         metadata: { inputIntegrity: report.ok },
       };
     });
 
+    let isolation = ["--user", "--map-root-user", "--net", "--mount-proc"];
+    let dropCapabilities: string[] = [];
     if (!config.network) {
       const probe = await sandbox.exec("unshare", ["--user", "--map-root-user", "--net", "--", "true"], { timeoutMs: Math.min(timeoutMs, 10_000), env: {} });
-      if (probe.exitCode !== 0) throw new Error("Required network isolation is unavailable; submission was not executed");
+      if (probe.exitCode !== 0) {
+        // Solari VMs can create a network namespace without a nested user namespace.
+        isolation = ["--net", "--mount-proc"];
+        // Do not let a root process re-enter the VM's original network namespace.
+        dropCapabilities = ["setpriv", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--"];
+        const fallback = await sandbox.exec("unshare", [...isolation, "--", ...dropCapabilities, "true"], { timeoutMs: Math.min(timeoutMs, 10_000), env: {} });
+        if (fallback.exitCode !== 0) throw new Error("Required network isolation is unavailable; submission was not executed");
+      }
+      metadata.networkIsolation = isolation.includes("--user") ? "user-netns" : "netns";
     }
-    const argv = config.network ? config.argv : ["unshare", "--user", "--map-root-user", "--net", "--mount-proc", "--", ...config.argv];
+    const argv = config.network ? config.argv : ["unshare", ...isolation, "--", ...dropCapabilities, ...config.argv];
     if (config.background) {
       if (!config.publishPort) throw new Error("background commands require publishPort");
-      await sandbox.start(argv[0], argv.slice(1), { cwd: "/submission", env, timeoutMs });
+      await sandbox.start("sh", ["-c", 'exec "$@" > /result/service.stdout.log 2> /result/service.stderr.log', "agentbench-service", ...argv], { cwd: "/submission", env, timeoutMs });
       const preview = await sandbox.previewUrl(config.publishPort);
       const health = withPreviewPath(preview.url, config.healthPath ?? "/");
       await waitForHealthy(health, timeoutMs);

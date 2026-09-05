@@ -27,6 +27,7 @@ import {
 import { redact } from "@/core/security/redact";
 import {
   AgentFailedError,
+  PreflightFailedError,
   CredentialMissingError,
   ProviderIncompatibleError,
   ProviderPlanInvalidError,
@@ -314,6 +315,7 @@ export function solariMcpServerDefinition(
       "@solarisdk/mcp@0.4.3",
     ],
     enabled_tools: solariToolsForPrimitives(primitives),
+    env_vars: ["SOLARI_API_KEY"],
   };
 }
 
@@ -365,7 +367,7 @@ export class CodexSdkProvider
   constructor(options: CodexSdkProviderOptions = {}) {
     this.#createCodex =
       options.createCodex ?? ((codexOptions) => new Codex(codexOptions));
-    this.#environment = options.environment ?? (() => safeChildEnvironment());
+    this.#environment = options.environment ?? (() => process.env);
     this.#credentials = options.credentials;
     this.#createHandleId = options.createHandleId ?? randomUUID;
     this.#solariGuardPath = options.solariGuardPath
@@ -408,6 +410,13 @@ export class CodexSdkProvider
         !(await this.#credentials.has(input.agent.credential)))
     ) {
       throw new CredentialMissingError(input.agent.credential, "codex");
+    }
+    try {
+      // Resolving the native executable must work in the production server,
+      // not only in the CLI/unbundled test process. No model call is made here.
+      this.#createCodex({ env: planningEnvironment(this.#environment()) });
+    } catch (error) {
+      throw new PreflightFailedError(error instanceof Error ? error.message : "Codex executable is unavailable", "codex", error);
     }
     return { ok: true };
   }
@@ -523,7 +532,16 @@ export class CodexSdkProvider
     let usage;
     let failure: string | undefined;
     try {
-      const streamed = await thread.runStreamed(input.task.prompt, { signal });
+      const executionPrompt = [
+        input.task.prompt,
+        `Approved RunPlan:\n${JSON.stringify(input.plan, null, 2)}`,
+        ...(input.task.resourceLimits.targetMinutes === undefined ? [] : [`Time target: ${input.task.resourceLimits.targetMinutes} minutes; hard cap: ${input.task.resourceLimits.totalMinutes} minutes. Correctness is scored separately; time-adjusted score is quality × min(1, target / total elapsed time). Total elapsed includes planning, generation, independent verification and cleanup, not queue time. Finish the submission promptly and leave time for verification.`]),
+        `Required submission files: ${JSON.stringify(input.task.submission.required)}. Write these under submission/ before optional polishing.`,
+        "Do not leave generated build output or dependency caches in submission/: dist, .next, node_modules, .venv, __pycache__, or .codex. Keep source and lockfiles; evaluators rebuild independently. Build/test in a separate scratch directory or remove only your generated outputs before returning. Never include credentials or .env files.",
+        "Use the approved Solari tools for isolated verification; do not assume host ports are available. Stop any servers you start before returning.",
+        `Time remaining for generation and independent evaluation: ${Math.max(0, Math.floor(input.remainingMs() / 1000))} seconds. Finish promptly to leave time for evaluators.`,
+      ].join("\n\n");
+      const streamed = await thread.runStreamed(executionPrompt, { signal });
       for await (const event of streamed.events) {
         transcript.push(
           redact(JSON.stringify(event), {

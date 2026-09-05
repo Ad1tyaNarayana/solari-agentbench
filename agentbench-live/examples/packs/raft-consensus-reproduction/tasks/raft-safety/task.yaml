@@ -12,7 +12,7 @@ fixtures:
 resources:
   allowed: [sandbox, browser]
   planningRequired: true
-  budget: { browserSessions: 1, sandboxes: 1, desktops: 0, totalMinutes: 5 }
+  budget: { browserSessions: 1, sandboxes: 1, desktops: 0, totalMinutes: 15, targetMinutes: 5 }
 submission:
   directory: submission
   required: [run, source, results.json, methodology.md, provenance.json]

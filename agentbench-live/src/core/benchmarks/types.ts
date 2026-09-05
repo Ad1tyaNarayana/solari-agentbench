@@ -29,7 +29,7 @@ export type BenchmarkTaskDefinition = {
   fixtures: string[];
   allowedPrimitives: Array<"browser" | "sandbox" | "desktop">;
   planningRequired: boolean;
-  resourceLimits: { browserSessions: number; sandboxes: number; desktops: number; totalMinutes: number };
+  resourceLimits: { browserSessions: number; sandboxes: number; desktops: number; totalMinutes: number; targetMinutes?: number };
   submission: { directory: string; required: string[] };
   compatibility?: {
     requiredEvidence: Array<"browser" | "sandbox" | "desktop">;

@@ -1,11 +1,11 @@
 schemaVersion: 1
 id: agentbench-live
 name: AgentBench Live Tutorials
-version: 1.0.0
+version: 1.1.0
 description: Canonical tutorial benchmarks for AgentBench Live.
 taskRoots:
   - tasks
 defaults:
-  timeoutSeconds: 300
+  timeoutSeconds: 900
   maxConcurrency: 1
   submissionDirectory: submission

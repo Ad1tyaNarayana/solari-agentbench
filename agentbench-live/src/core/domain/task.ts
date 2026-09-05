@@ -2,6 +2,7 @@ import type { Primitive } from "./plan";
 import type { EvaluationPolicy, EvaluatorDefinition } from "@/core/benchmarks/types";
 
 export type ResourceBudget = {
+  targetMs?: number;
   totalMs: number;
   browserMs: number;
   sandboxMs: number;

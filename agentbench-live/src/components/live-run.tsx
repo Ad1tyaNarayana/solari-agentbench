@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { RunStage } from "@/core/domain/run";
 
 type VisibleEvent = {
@@ -30,19 +31,23 @@ function categoryFor(event: VisibleEvent): EventCategory {
 
 function eventSummary(event: VisibleEvent): string {
   const inner = event.kind === "provider_event" && event.payload.payload && typeof event.payload.payload === "object" ? event.payload.payload as Record<string, unknown> : event.payload;
-  return String(inner.stage ?? inner.message ?? inner.code ?? inner.tool ?? inner.primitive ?? normalizedKind(event));
+  return String(inner.stage ?? inner.message ?? inner.text ?? inner.code ?? inner.tool ?? inner.primitive ?? normalizedKind(event));
 }
 
 export function LiveRun({
   runId,
   initialStage,
+  initialEvents = [],
 }: {
   runId: string;
   initialStage: RunStage;
+  initialEvents?: VisibleEvent[];
 }) {
+  const { refresh } = useRouter();
   const [stage, setStage] = useState(initialStage);
-  const [events, setEvents] = useState<VisibleEvent[]>([]);
+  const [events, setEvents] = useState<VisibleEvent[]>(initialEvents);
   const [cancelling, setCancelling] = useState(false);
+  const latestStageSequence = useRef(Math.max(0, ...initialEvents.map(event => event.id)));
 
   useEffect(() => {
     if (terminalStages.has(initialStage)) return;
@@ -61,9 +66,11 @@ export function LiveRun({
           (left, right) => left.id - right.id,
         ),
       );
-      if (message.type === "stage" && typeof payload.stage === "string") {
+      if (message.type === "stage" && typeof payload.stage === "string" && next.id > latestStageSequence.current) {
+        latestStageSequence.current = next.id;
         const nextStage = payload.stage as RunStage;
         setStage(nextStage);
+        refresh();
         if (terminalStages.has(nextStage)) source.close();
       }
     };
@@ -71,7 +78,7 @@ export function LiveRun({
       source.addEventListener(kind, receive);
     }
     return () => source.close();
-  }, [initialStage, runId]);
+  }, [initialStage, runId, refresh]);
 
   return (
     <section className="panel live-panel" aria-labelledby="live-heading">

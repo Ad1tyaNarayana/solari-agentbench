@@ -193,6 +193,7 @@ export class BenchmarkCatalog {
       allowedPrimitives: [...raw.allowedPrimitives],
       requiredEvidence: [...(compatibility?.requiredEvidence ?? [])],
       budget: compatibility ? { ...compatibility.legacyBudgetMs } : {
+        ...(raw.resourceLimits.targetMinutes === undefined ? {} : { targetMs: raw.resourceLimits.targetMinutes * 60_000 }),
         totalMs,
         browserMs: raw.resourceLimits.browserSessions > 0 ? totalMs : 0,
         sandboxMs: raw.resourceLimits.sandboxes > 0 ? totalMs : 0,

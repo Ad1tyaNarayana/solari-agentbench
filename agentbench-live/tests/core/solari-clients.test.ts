@@ -1,4 +1,6 @@
 import { expect, test, vi } from "vitest";
+import { chromium } from "patchright-core";
+import { gzipSync } from "node:zlib";
 import {
   BrowserServiceAdapter,
   createSolariServices,
@@ -6,6 +8,32 @@ import {
   isLiveSolariServices,
   SandboxServiceAdapter,
 } from "@/core/solari/clients";
+
+test("records through the CDP default context and releases before disconnecting", async () => {
+  const lifecycle: string[] = [];
+  const page = { url: () => "https://example.com" };
+  const raw = { contexts: () => [{ newPage: async () => page }], close: async () => { lifecycle.push("disconnect"); } };
+  const connect = vi.spyOn(chromium, "connectOverCDP").mockResolvedValue(raw as never);
+  const client = { sessions: { create: async () => ({ id: "b", cdpEndpoint: "http://local.test" }), releaseAndWait: async () => { lifecycle.push("release"); } } };
+  try {
+    const handle = await new BrowserServiceAdapter(client as never).create({ recording: true });
+    expect((await handle.newPage()).url()).toBe("https://example.com");
+    await handle.close();
+    expect(lifecycle[0]).toBe("release");
+    expect(lifecycle).toContain("disconnect");
+  } finally { connect.mockRestore(); }
+});
+
+test.each([false, true])("downloads and decodes Solari replay events (gzip=%s)", async (compressed) => {
+  const bytes = Buffer.from('{"type":2,"timestamp":1000,"data":{}}\n');
+  const client = { sessions: { getReplayUrl: async () => ({ url: "https://replay.test", expiresInSeconds: 60 }), downloadReplay: async () => compressed ? gzipSync(bytes) : bytes } };
+  expect((await new BrowserServiceAdapter(client as never).getReplayUrl("b")).events).toEqual([{ type: 2, timestamp: 1000, data: {} }]);
+});
+
+test("rejects an empty replay instead of certifying an empty recording", async () => {
+  const client = { sessions: { getReplayUrl: async () => ({ url: "https://replay.test", expiresInSeconds: 60 }), downloadReplay: async () => new Uint8Array() } };
+  await expect(new BrowserServiceAdapter(client as never).getReplayUrl("b")).rejects.toThrow(/empty/);
+});
 
 test("brands only configured SDK service bundles as live Solari services", async () => {
   const unavailable = createSolariServices("");

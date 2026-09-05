@@ -1,6 +1,17 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { StudioShell } from "@/components/studio/studio-shell";
 import { initialDraft } from "@/components/studio/use-benchmark-draft";
+
+test("review exposes explicit task and agent selection for a single run", () => {
+  const draft = structuredClone(initialDraft);
+  draft.agents.push({ ...draft.agents[0], id: "second", name: "Second agent" });
+  render(<StudioShell initialDraft={draft} />);
+  fireEvent.click(screen.getByRole("button", { name: "Review" }));
+  fireEvent.change(screen.getByLabelText("Run agent"), { target: { value: "second" } });
+  expect(screen.getByLabelText("Run agent")).toHaveValue("second");
+  expect(screen.getByLabelText("Run task")).toHaveValue("0");
+  expect(screen.getByText(/launches one selected task/i)).toBeInTheDocument();
+});
 test("renders the complete three-pane authoring frame", () => { render(<StudioShell />); expect(screen.getByRole("heading", { name: /benchmark studio/i, level: 1 })).toBeInTheDocument(); for (const step of ["Basics", "Tasks", "Environment", "Evaluators", "Agents", "Review"]) expect(screen.getByRole("button", { name: step })).toBeInTheDocument(); expect(screen.getByRole("region", { name: /generated files/i })).toBeInTheDocument(); expect(screen.getByRole("status")).toHaveTextContent(/unsaved|checking|valid/i); });
 
 test("supports evaluator lifecycle controls and adding agent presets", () => {

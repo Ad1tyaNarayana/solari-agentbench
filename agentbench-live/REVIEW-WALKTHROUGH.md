@@ -1,6 +1,6 @@
 # AgentBench review and recording walkthrough
 
-Updated September 5, 2026 against the local working tree. This supersedes the
+Updated September 5, 2026 for the reviewed implementation release. This supersedes the
 earlier review against c25e24c. See [current state](docs/current-state.md) and
 [verification details](docs/evidence-verification.md). This is not a certificate.
 

@@ -19,7 +19,10 @@ function normalize(path: string): string {
 
 export class FileEvaluator implements Evaluator {
   readonly type = "file" as const;
-  validate(definition: EvaluatorDefinition): void { Config.parse(definition.config); }
+  validate(definition: EvaluatorDefinition): void {
+    const config = Config.parse(definition.config);
+    if (config.assertion === "regex") new RegExp(String(config.value), config.flags);
+  }
 
   async evaluate(definition: EvaluatorDefinition, context: EvaluatorContext, signal: AbortSignal): Promise<EvaluatorOutcome> {
     void signal;

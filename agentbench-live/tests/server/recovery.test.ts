@@ -86,3 +86,12 @@ test("server container singleton survives module reload factories", () => {
     getOrCreateGlobalServerContainer(key, () => ({ id: "second" })),
   ).toBe(first);
 });
+
+test("recovery leaves cancelled runs terminal", () => {
+  const repository = new SqliteRunRepository(":memory:");
+  const run = repository.create({ taskId: "sample", agentId: "sol-low" });
+  repository.update(run.id, { stage: "cancelled" });
+  expect(reconcileAbandonedRuns(repository)).toBe(0);
+  expect(repository.get(run.id)?.stage).toBe("cancelled");
+  repository.close();
+});

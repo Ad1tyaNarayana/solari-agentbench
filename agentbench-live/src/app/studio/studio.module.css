@@ -1,1 +1,38 @@
-.page{height:calc(100vh - 64px);display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}.title{padding:20px 24px 16px;border-bottom:1px solid var(--line)}.title h1{font-size:1.45rem}.title p{margin-top:6px;color:var(--muted);font-size:.78rem}.grid{min-height:0;display:grid;grid-template-columns:240px minmax(480px,1fr) 420px}.steps,.editor,.preview{min-height:0;overflow:auto}.steps{padding:18px;border-right:1px solid var(--line);background:#0e110f}.steps button{width:100%;padding:12px;text-align:left;border:0;border-radius:5px;color:var(--muted);background:transparent;cursor:pointer}.steps button[data-active=true]{color:var(--ink);background:var(--surface-2)}.editor{padding:26px}.preview{border-left:1px solid var(--line);background:#090b0a;padding:18px}.panel h2{margin-bottom:18px}.field{display:grid;gap:7px;margin-bottom:16px;color:var(--muted);font-size:.75rem}.field input,.field textarea,.field select{width:100%;padding:10px;border:1px solid #3a403b;background:var(--canvas);color:var(--ink);font:inherit}.field textarea{min-height:130px;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.checks{display:flex;gap:18px;margin:12px 0 22px}.checks label{display:flex;gap:7px;color:var(--muted);font-size:.8rem}.cards{display:grid;gap:12px}.card{padding:16px;border:1px solid var(--line);background:var(--surface)}.card header{display:flex;justify-content:space-between;margin-bottom:12px}.actions{display:flex;gap:9px;margin-top:18px}.actions button,.footer button{padding:9px 13px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer}.primary{background:var(--signal)!important;color:#111!important;font-weight:700}.fileList{display:grid;gap:12px}.file{border:1px solid var(--line)}.file strong{display:block;padding:9px;color:var(--signal);font:.67rem var(--font-mono)}.file pre{max-height:260px;overflow:auto;padding:12px;background:#050706;color:#afb8ae;font:.66rem/1.55 var(--font-mono);white-space:pre-wrap}.footer{display:flex;align-items:center;gap:12px;padding:12px 24px;border-top:1px solid var(--line);background:var(--surface)}.footer p{margin-right:auto;color:var(--muted);font:.72rem var(--font-mono)}.valid{color:var(--signal)}.invalid{color:var(--danger)}.mobileNote{display:none}@media(max-width:1100px){.grid{grid-template-columns:210px 1fr}.preview{display:none}}@media(max-width:760px){.grid{display:block}.steps,.editor{display:none}.mobileNote{display:block;padding:30px}.page{overflow:auto}.footer{position:sticky;bottom:0}}
+.page { height:calc(100vh - 106px); display:grid; grid-template-rows:auto 1fr auto; overflow:hidden; }
+.title { padding:20px 24px; border-bottom:1px solid var(--line); }
+.title h1 { font-size:20px; font-weight:550; letter-spacing:-.03em; }
+.title p { color:var(--dim); font-size:12px; line-height:1.6; margin-top:7px; }
+.grid { min-height:0; display:grid; grid-template-columns:165px minmax(380px,1fr) 340px; }
+.steps,.editor,.preview { min-height:0; overflow:auto; }
+.steps { padding:18px 12px; border-right:1px solid var(--line); }
+.steps button { width:100%; padding:10px 12px; border:0; border-left:2px solid transparent; text-align:left; background:transparent; color:var(--dim); font-size:12px; margin-bottom:5px; }
+.steps button[data-active=true] { background:var(--surface-2); color:var(--ink); border-left-color:var(--signal); }
+.editor { padding:26px; }
+.preview { border-left:1px solid var(--line); background:#15171b; padding:20px; }
+.preview > h2 { font-size:13px; font-weight:500; color:var(--muted); margin-bottom:18px; }
+.panel h2 { font-size:16px; font-weight:550; margin-bottom:22px; }
+.field { display:grid; gap:8px; margin-bottom:18px; color:var(--muted); font-size:12px; }
+.field input,.field textarea,.field select { width:100%; padding:9px 10px; border:1px solid #3a3e47; background:var(--surface); color:var(--ink); border-radius:4px; font:inherit; line-height:1.6; }
+.field textarea { min-height:150px; resize:vertical; font:11px/1.8 var(--font-mono); }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.checks { display:flex; gap:16px; margin:14px 0 20px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+.checks label { display:flex; gap:7px; }
+.cards { display:grid; gap:16px; }
+.card { border:1px solid var(--line); padding:18px; margin-bottom:15px; background:var(--surface); border-radius:4px; }
+.card header { display:flex; justify-content:space-between; gap:12px; margin-bottom:14px; font-size:13px; }
+.card > button { padding:6px 9px; border:1px solid var(--line); background:transparent; color:var(--muted); font-size:11px; border-radius:4px; }
+.actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:16px; }
+.actions button,.actions select,.footer button { padding:7px 11px; border:1px solid #414651; border-radius:4px; background:var(--surface); color:var(--ink); font-size:12px; }
+.primary { background:#d8dce5!important; color:#16181d!important; border-color:#c1c6d0!important; font-weight:600; }
+.fileList { display:grid; gap:20px; }
+.file { min-width:0; }
+.file strong { display:block; color:var(--muted); font:10px/1.6 var(--font-mono); padding-bottom:9px; }
+.file pre { max-height:270px; overflow:auto; background:#101215; color:#abb6c5; border:1px solid var(--line); border-radius:4px; padding:13px; font:10px/1.8 var(--font-mono); white-space:pre-wrap; }
+.footer { display:flex; align-items:center; gap:10px; padding:12px 24px; border-top:1px solid var(--line); background:#15171b; }
+.footer p { margin-right:auto; color:var(--dim); font:10px/1.7 var(--font-mono); }
+.footer a { font-size:12px; color:var(--signal); }
+.valid { color:#a6c9b4; }
+.invalid { color:var(--danger); }
+.mobileNote { display:none; }
+@media(max-width:1100px) { .grid { grid-template-columns:155px minmax(0,1fr); } .preview { display:none; } }
+@media(max-width:760px) { .page { height:auto; min-height:calc(100vh - 100px); overflow:visible; } .grid { display:block; } .steps { display:flex; overflow:auto; gap:8px; border-right:0; border-bottom:1px solid var(--line); padding:10px; } .steps button { width:auto; margin:0; white-space:nowrap; } .editor { padding:20px 16px; } .row { grid-template-columns:1fr; gap:0; } .footer { flex-wrap:wrap; padding:14px 16px; } .footer p { width:100%; margin:0; } .title { padding:20px 16px; } }

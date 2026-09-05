@@ -1,6 +1,7 @@
 import type { AgentDefinition, BenchmarkTaskDefinition } from "@/core/benchmarks/types";
 import { redactCredentialOutput } from "@/core/credentials/redaction";
 import type { RunPlan } from "@/core/domain/plan";
+import { timeAdjustedScore } from "@/core/domain/time-score";
 import type { FailureCode, RunRecord, RunStage } from "@/core/domain/run";
 import { createAgentEventSink } from "@/core/providers/events";
 import { AgentTimeoutError } from "@/core/providers/errors";
@@ -248,7 +249,8 @@ export class AgentBenchOrchestrator {
             signal: runController.signal,
           }),
         );
-        run = this.move(run, "capturing");
+        for (const issue of evaluation.resourceAudit.cleanupIssues) this.recordCleanupIssue(run.id, issue.detail);
+        run = this.move(this.requireRun(run.id), "capturing");
         run = this.dependencies.repository.update(run.id, {
           evaluationStatus: evaluation.report.status,
           primaryScore: evaluation.report.score,
@@ -299,7 +301,7 @@ export class AgentBenchOrchestrator {
         run = this.move(run, "completed", { completedAt: new Date(now()).toISOString(), durationMs });
       }
     } catch (error) {
-      run = this.fail(run, error, workspace, now() - startedMs, now);
+      run = this.fail(run, runController.signal.aborted ? runController.signal.reason : error, workspace, now() - startedMs, now);
     } finally {
       if (workspace) {
         try {
@@ -331,6 +333,7 @@ export class AgentBenchOrchestrator {
     const finishedAtMs = now();
     const totalDurationMs = finishedAtMs - startedMs;
     const current = this.requireRun(run.id);
+    const adjusted = current.stage === "completed" ? timeAdjustedScore(current.primaryScore, totalDurationMs, task.budget.targetMs) : undefined;
     run = this.dependencies.repository.update(run.id, {
       completedAt: new Date(finishedAtMs).toISOString(),
       durationMs: totalDurationMs,
@@ -339,7 +342,8 @@ export class AgentBenchOrchestrator {
             current.score as ScoreBreakdown,
             totalDurationMs <= task.budget.totalMs,
           )
-        : undefined,
+        : adjusted === undefined ? current.score : { ...current.score, timeAdjusted: adjusted },
+      ...(task.budget.targetMs === undefined ? {} : { toolPolicy: { ...current.toolPolicy, timeScoring: { version: 1, targetMs: task.budget.targetMs, hardLimitMs: task.budget.totalMs, elapsedMs: totalDurationMs } } }),
     });
     return run;
   }

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Database from "better-sqlite3";
 import type { RunRecord } from "@/core/domain/run";
+import { redactCredentialOutput } from "@/core/credentials/redaction";
 import type { RunEvent } from "@/core/events/run-events";
 import type {
   AppendRunEventInput,
@@ -97,7 +98,7 @@ function fromRunRow(row: RunRow): RunRecord {
     usage: optionalJson(row.usage),
     evaluationStatus: row.evaluation_status ?? undefined,
     primaryScore: row.primary_score,
-    evaluationReport: optionalJson(row.evaluation_report),
+    evaluationReport: redactCredentialOutput(optionalJson(row.evaluation_report)) as RunRecord["evaluationReport"],
     evidenceManifest: optionalJson(row.evidence_manifest),
   };
 }
@@ -173,6 +174,9 @@ export class SqliteRunRepository implements RunRepository {
     const current = this.get(id);
     if (!current) throw new Error(`Unknown run: ${id}`);
     const updated = { ...current, ...patch };
+    // Reports are persisted output, not live evaluator dependencies. Remove
+    // capability URLs here without mutating the values used during evaluation.
+    updated.evaluationReport = redactCredentialOutput(updated.evaluationReport) as RunRecord["evaluationReport"];
     this.database.transaction(() => {
       this.persistUpdate(updated);
       this.persistEvaluation(updated);

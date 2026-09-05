@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { LiveRun } from "@/components/live-run";
+import { RunUpdates } from "@/components/run-updates";
 import { StageTimeline } from "@/components/stage-timeline";
 import { demoRuns } from "@/core/demo/seed";
 import {
@@ -32,6 +33,7 @@ export default async function RunDetailPage({
 
   return (
     <main className="run-page shell">
+      {run.provenance?.kind !== "synthetic-demo" ? <RunUpdates runId={run.id} initialSignature={JSON.stringify(run)} /> : null}
       <header className="run-page__nav">
         <Link href="/">← Scoreboard</Link>
         <span>Run {run.id.slice(0, 8)}</span>
@@ -46,7 +48,7 @@ export default async function RunDetailPage({
         <div className={`run-outcome run-outcome--${run.stage}`}>
           <span>{run.stage}</span>
           <strong>{run.primaryScore ?? run.score?.total ?? "—"}</strong>
-          <small>Total score / 100</small>
+          <small>{run.score?.timeAdjusted !== undefined ? "Quality score / 100" : "Total score / 100"}</small>
         </div>
       </section>
 
@@ -56,6 +58,8 @@ export default async function RunDetailPage({
           <p>This detail page contains illustrative seed data and locally generated mock artifacts. It is not live benchmark proof.</p>
         </aside>
       ) : null}
+
+      {run.harnessId === "reference-infrastructure-check" ? <aside className="failure-banner"><strong>Live reference infrastructure check</strong><p>Not an agent benchmark score. A fixed reference submission exercised the real Solari evaluator and evidence-capture pipeline.</p></aside> : null}
 
       {run.stage === "failed" ? (
         <aside className="failure-banner">
@@ -75,10 +79,10 @@ export default async function RunDetailPage({
           <section className="panel score-panel">
             <div className="section-heading"><p className="eyebrow">Observed result</p><h2>Score</h2></div>
             {scores.length > 0 ? (
-              <dl>{scores.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>
+              <dl>{scores.map(([name, value]) => <div key={name}><dt>{name === "timeAdjusted" ? "Time-adjusted score" : name === "total" ? "Quality score" : name}</dt><dd>{value}</dd></div>)}</dl>
             ) : <p className="empty-state">A score appears after independent verification.</p>}
           </section>
-          <LiveRun runId={run.id} initialStage={run.stage} />
+          <LiveRun key={`${run.id}:${run.stage}`} runId={run.id} initialStage={run.stage} initialEvents={getServerContainer().listEvents(run.id).map(event => ({ id: event.sequence, kind: event.kind, payload: event.payload }))} />
           <section className="panel metadata-panel">
             <h2>Run record</h2>
             <dl>

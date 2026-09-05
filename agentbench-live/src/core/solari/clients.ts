@@ -5,6 +5,8 @@ import {
 } from "@solarisdk/browser";
 import { DesktopClient, type Desktop } from "@solarisdk/desktop";
 import { SandboxClient, type Sandbox } from "@solarisdk/sandbox";
+import { chromium, type Browser } from "patchright-core";
+import { gunzipSync } from "node:zlib";
 import type {
   BrowserHandle,
   BrowserPageHandle,
@@ -70,16 +72,19 @@ class BrowserPageAdapter implements BrowserPageHandle {
 class BrowserHandleAdapter implements BrowserHandle {
   readonly id: string;
 
-  constructor(private readonly session: BrowserSession) {
-    this.id = session.id;
+  constructor(private readonly browser: Browser, id: string, private readonly release: () => Promise<void>) {
+    this.id = id;
   }
 
   async newPage(): Promise<BrowserPageHandle> {
-    return new BrowserPageAdapter(await this.session.newPage());
+    const context = this.browser.contexts()[0];
+    if (!context) throw new Error("Solari CDP default recording context is unavailable");
+    return new BrowserPageAdapter(await context.newPage());
   }
 
-  close(): Promise<void> {
-    return this.session.close();
+  async close(): Promise<void> {
+    try { await this.release(); }
+    finally { await this.browser.close(); }
   }
 }
 
@@ -87,7 +92,14 @@ export class BrowserServiceAdapter implements BrowserService {
   constructor(private readonly client: Solari) {}
 
   async create(options = {}): Promise<BrowserHandle> {
-    return new BrowserHandleAdapter(await this.client.launch(options));
+    const session = await this.client.sessions.create(options);
+    try {
+      const browser = await chromium.connectOverCDP(session.cdpEndpoint, { timeout: 30_000 });
+      return new BrowserHandleAdapter(browser, session.id, () => this.client.sessions.releaseAndWait(session.id));
+    } catch (error) {
+      await this.client.sessions.releaseAndWait(session.id).catch(() => undefined);
+      throw error;
+    }
   }
 
   async listIds(): Promise<string[]> {
@@ -117,9 +129,14 @@ export class BrowserServiceAdapter implements BrowserService {
 
   async getReplayUrl(
     id: string,
-  ): Promise<{ url: string; expiresInSeconds: number }> {
+  ): Promise<{ url: string; expiresInSeconds: number; events: unknown[] }> {
     const replay: ReplayUrl = await this.client.sessions.getReplayUrl(id);
-    return { url: replay.url, expiresInSeconds: replay.expiresInSeconds };
+    const bytes = await this.client.sessions.downloadReplay(id);
+    const decoded = bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes, { maxOutputLength: 32 * 1024 * 1024 }) : Buffer.from(bytes);
+    if (decoded.length > 32 * 1024 * 1024) throw new Error("Browser replay exceeds 32 MiB limit");
+    const events: unknown[] = decoded.toString("utf8").split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+    if (!events.length) throw new Error("Browser replay is empty");
+    return { url: replay.url, expiresInSeconds: replay.expiresInSeconds, events };
   }
 
   dispose(): Promise<void> {

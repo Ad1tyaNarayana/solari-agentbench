@@ -60,7 +60,7 @@ export interface BrowserService {
   release(id: string): Promise<void>;
   getReplayUrl(
     id: string,
-  ): Promise<{ url: string; expiresInSeconds: number }>;
+  ): Promise<{ url: string; expiresInSeconds: number; events?: unknown[] }>;
 }
 
 export interface DesktopHandle {

@@ -13,7 +13,7 @@ import type { DisposableWorkspace } from "@/core/security/workspace";
 import { AgentBenchOrchestrator } from "@/core/runner/orchestrator";
 import { runMatrix } from "@/core/runner/matrix";
 
-test("runs the complete two-agent by two-task matrix with concurrency one", async () => {
+test.each([false, true])("runs the complete matrix with concurrency one; generic engine=%s", async (generic) => {
   const repository = new SqliteRunRepository(":memory:");
   const snapshotsRoot = await mkdtemp(join(tmpdir(), "agentbench-pipeline-snapshots-"));
   const catalog = new BenchmarkCatalog(
@@ -23,6 +23,7 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
   const preflightDigests: string[] = [];
   let active = 0;
   let peak = 0;
+  let clock = 0;
   const provider: AgentProvider = {
     describe: () => ({
       id: "codex", name: "Fake Codex", adapterVersion: "test",
@@ -88,7 +89,13 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
     },
     createToolBroker: () => ({ listDefinitions: () => [], invoke: async () => undefined }),
     verifier,
-    resolveSelection: (request) => catalog.resolveSelection(request),
+    evaluator: generic ? { run: async (input) => { clock += 600000; return { report: { status: "valid-score", score: 100, possiblePoints: 100, results: [] }, manifest: { schemaVersion: 1, runId: input.runId, taskId: input.taskId, entries: [] }, resourceAudit: { created: { browsers: [], sandboxes: [], desktops: [] }, cleanupIssues: [{ code: "cleanup_failed", detail: "Evaluator cleanup needs attention" }] } }; } } : undefined,
+    now: () => clock,
+    resolveSelection: async (request) => {
+      const selection = await catalog.resolveSelection(request);
+      if (generic) selection.task.budget = { ...selection.task.budget, targetMs: 300000, totalMs: 900000 };
+      return selection;
+    },
     preflight: async (selection) => {
       const manifest = JSON.parse(
         await readFile(join(selection.snapshot.root, "manifest.json"), "utf8"),
@@ -133,7 +140,7 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
       expect.arrayContaining([
         expect.objectContaining({
           benchmarkId: "agentbench-live",
-          benchmarkVersion: "1.0.0",
+          benchmarkVersion: "1.1.0",
           providerId: "codex",
           harnessId: "codex-sdk",
           harnessVersion: "local",
@@ -141,6 +148,11 @@ test("runs the complete two-agent by two-task matrix with concurrency one", asyn
       ]),
     );
     expect(peak).toBe(1);
+    if (generic) for (const run of records) {
+      expect(run.cleanupIssues).toEqual([{ code: "cleanup_failed", detail: "Evaluator cleanup needs attention" }]);
+      expect(repository.get(run.id)?.score).toEqual({ total: 100, timeAdjusted: 50 });
+      expect(repository.get(run.id)?.primaryScore).toBe(100);
+    }
   } finally {
     repository.close();
     await rm(snapshotsRoot, { recursive: true, force: true });

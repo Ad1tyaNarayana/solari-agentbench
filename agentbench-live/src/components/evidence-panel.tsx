@@ -32,6 +32,9 @@ export function EvidencePanel({ run }: { run: RunRecord }) {
   const desktopScreenshot = typeof evidence.desktopScreenshot === "string" ? evidence.desktopScreenshot : undefined;
   const comparisonPlot = typeof evidence.comparisonPlot === "string" ? evidence.comparisonPlot : undefined;
   const synthetic = run.provenance?.kind === "synthetic-demo";
+  const artifacts = run.evidenceManifest?.entries.filter(entry => entry.runId === run.id && entry.taskId === run.taskId) ?? [];
+  const hasCapture = artifacts.length > 0 || Boolean(browserScreenshot || desktopScreenshot || comparisonPlot || replay);
+  const terminal = ["completed", "failed", "cancelled"].includes(run.stage);
 
   return (
     <section className="panel evidence-panel" aria-labelledby="evidence-heading">
@@ -59,19 +62,25 @@ export function EvidencePanel({ run }: { run: RunRecord }) {
         </div>
       ) : null}
 
-      {replay ? (
+      {artifacts.some(entry => entry.role === "browser-replay") ? (
+        <p className="retention-note">Recording saved locally as browser-replay JSON below, alongside the screenshots. It does not depend on an expiring Solari URL.</p>
+      ) : replay ? (
         <a className="replay-link" href={replay} target="_blank" rel="noreferrer">
           Open recorded browser replay <span aria-hidden="true">↗</span>
         </a>
+      ) : !hasCapture ? (
+        <p className="retention-note">{terminal ? "No evidence was captured for this run. Check the failure and evaluator results below; planned resources do not prove execution." : "Evidence has not been captured yet. Artifacts appear when independent verification runs."}</p>
       ) : run.taskId === "url-shortener" ? (
-        <p className="retention-note">The browser replay is unavailable or has expired. Canonical screenshots remain below.</p>
+        <p className="retention-note">No browser replay is attached. The captured artifacts below remain available.</p>
       ) : null}
 
       <div className="evidence-grid">
+        {artifacts.filter(entry => ["image/png", "image/jpeg", "image/webp"].includes(entry.mimeType)).map(entry => <EvidenceImage key={`${entry.digest}/${entry.role}`} src={`/api/runs/${encodeURIComponent(run.id)}/evidence/${entry.digest}`} alt={entry.role} />)}
         {browserScreenshot ? <EvidenceImage src={browserScreenshot} alt="Browser evidence screenshot" /> : null}
         {desktopScreenshot ? <EvidenceImage src={desktopScreenshot} alt="Desktop evidence screenshot" /> : null}
         {comparisonPlot ? <EvidenceImage src={comparisonPlot} alt="Expected and observed comparison plot" /> : null}
       </div>
+      {artifacts.filter(entry => !["image/png", "image/jpeg", "image/webp"].includes(entry.mimeType)).map(entry => <a className="artifact-link" key={`${entry.digest}/${entry.role}`} href={`/api/runs/${encodeURIComponent(run.id)}/evidence/${entry.digest}`} target="_blank" rel="noreferrer">{entry.role} · {entry.mimeType} · {entry.size.toLocaleString()} bytes ↗</a>)}
 
       {run.evaluationReport ? (
         <div className="evaluator-results" aria-label="Evaluator results">

@@ -59,6 +59,11 @@ function taskWithJudgeWeight(weight: number) {
 }
 
 describe("parseTaskFile", () => {
+  it("accepts a soft target below the hard limit and rejects an impossible target", () => {
+    const task = { ...valid, resources: { ...valid.resources, budget: { ...valid.resources.budget, targetMinutes: 5, totalMinutes: 15 } } };
+    expect(parseTaskFile(task).resourceLimits).toMatchObject({ targetMinutes: 5, totalMinutes: 15 });
+    expect(() => parseTaskFile({ ...task, resources: { ...task.resources, budget: { ...task.resources.budget, targetMinutes: 16 } } })).toThrow(/target/i);
+  });
   it("exports the canonical strict schemas", () => {
     expect(TaskFileSchema).toBeDefined();
     expect(AgentsFileSchema).toBeDefined();

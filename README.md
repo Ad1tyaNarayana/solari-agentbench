@@ -2,6 +2,8 @@
 
 **AgentBench reviewers: [start with the current-state guide](agentbench-live/docs/current-state.md).** It summarizes demonstrated results, unverified tasks, and current limitations.
 
+[Inspect real browser screenshots and evaluation results](agentbench-live/docs/review-evidence/README.md) without installing anything.
+
 Short, runnable examples for [Solari](https://getsolari.com) — cloud browsers,
 sandboxes, and desktops behind one API key.
 

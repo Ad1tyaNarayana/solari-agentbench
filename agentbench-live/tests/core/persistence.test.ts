@@ -216,6 +216,37 @@ test("assigns monotonically increasing persisted event sequences", () => {
   ]);
 });
 
+test("redacts evaluator capability URLs before returning and persisting reports", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentbench-report-redaction-"));
+  const databasePath = join(directory, "runs.sqlite");
+  const signedUrl = "https://preview.example.test/?pt_token=private-preview-secret";
+  try {
+    repository = new SqliteRunRepository(databasePath);
+    const run = repository.create({ taskId: "custom", agentId: "agent" });
+    const report = { status: "valid-score" as const, score: 50, possiblePoints: 100 as const, results: [{ evaluatorId: "browser", status: "failed" as const, earnedPoints: 50, possiblePoints: 100, summary: "partial", assertions: [{ id: "redirect", passed: false, summary: "wrong destination", observed: signedUrl }], evidence: [], outputs: { previewUrl: signedUrl }, metadata: { nested: { url: signedUrl } } }] };
+    const updated = repository.update(run.id, { evaluationReport: report, primaryScore: 50 });
+    expect(JSON.stringify(updated)).not.toContain("private-preview-secret");
+    expect(repository.get(run.id)?.evaluationReport?.score).toBe(50);
+    // Sanitizing persistence must not mutate live evaluator dependency outputs.
+    expect(report.results[0].outputs.previewUrl).toBe(signedUrl);
+    const database = new Database(databasePath);
+    try {
+      for (const table of ["runs", "evaluator_results", "evaluator_assertions"]) {
+        expect(JSON.stringify(database.prepare(`SELECT * FROM ${table}`).all())).not.toContain("private-preview-secret");
+      }
+      // Legacy records must also be safe to read, without changing their scores.
+      database.prepare("UPDATE runs SET evaluation_report = ? WHERE id = ?").run(JSON.stringify(report), run.id);
+      expect(JSON.stringify(repository.get(run.id))).not.toContain("private-preview-secret");
+      expect(JSON.stringify(repository.list())).not.toContain("private-preview-secret");
+      expect(repository.get(run.id)?.primaryScore).toBe(50);
+    } finally { database.close(); }
+  } finally {
+    repository?.close();
+    repository = undefined;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("updating a run preserves its persisted event history", () => {
   repository = new SqliteRunRepository(":memory:");
   const run = repository.create({ taskId: "sample", agentId: "sol-low" });

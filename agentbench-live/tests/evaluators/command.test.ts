@@ -60,6 +60,20 @@ test("uses a fresh sandbox, uploads immutable inputs, and denies network with un
   expect(evaluatorContext.resources.registerFinalizer).toHaveBeenCalledWith("cmd", expect.any(Function));
 });
 
+test("retains bounded background service logs during finalization", async () => {
+  const sandbox = fakeSandbox();
+  sandbox.previewUrl.mockResolvedValue({ url: "https://preview.test" });
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true })));
+  try {
+    const c = await context(sandbox);
+    await new CommandEvaluator().evaluate({ id: "serve", type: "command", enabled: true, weight: 100, prerequisites: [], config: { argv: ["node", "/benchmark/verify.mjs"], background: true, publishPort: 3000, network: true } }, c, new AbortController().signal);
+    const result = await vi.mocked(c.resources.registerFinalizer).mock.calls[0][1]();
+    expect(result.evidence.map(e => e.role)).toEqual(["input-integrity", "service-stdout", "service-stderr"]);
+    expect(sandbox.exec).toHaveBeenCalledWith("head", ["-c", "1048576", "/result/service.stdout.log"], expect.anything());
+    expect(sandbox.start).toHaveBeenCalledWith("sh", ["-c", 'exec "$@" > /result/service.stdout.log 2> /result/service.stderr.log', "agentbench-service", "node", "/benchmark/verify.mjs"], expect.anything());
+  } finally { vi.unstubAllGlobals(); }
+});
+
 test("publishes evaluator-owned evidence when sealed inputs remain unchanged", async () => {
   const sandbox = fakeSandbox();
   const evaluatorContext = await context(sandbox);
@@ -210,8 +224,21 @@ test("maps command exits to failed assertions and network infrastructure failure
   const unsupported = fakeSandbox();
   unsupported.exec
     .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+    .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "denied" })
     .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "denied" });
   await expect(new CommandEvaluator().evaluate({ id: "cmd", type: "command", weight: 100, enabled: true, prerequisites: [], config: { argv: ["true"] } }, await context(unsupported), new AbortController().signal)).rejects.toThrow(/network isolation/i);
+});
+
+test("uses a fresh privileged network namespace when nested user namespaces are unsupported", async () => {
+  const sandbox = fakeSandbox();
+  sandbox.exec.mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+    .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "Invalid argument" });
+  const outcome = await new CommandEvaluator().evaluate({ id: "cmd", type: "command", weight: 100, enabled: true, prerequisites: [], config: { argv: ["node", "/submission/app.js"] } }, await context(sandbox), new AbortController().signal);
+  expect(outcome.status).toBe("passed");
+  expect(outcome.metadata.networkEnabled).toBe(false);
+  const dropCapabilities = ["setpriv", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--"];
+  expect(sandbox.exec).toHaveBeenCalledWith("unshare", ["--net", "--mount-proc", "--", ...dropCapabilities, "true"], expect.anything());
+  expect(sandbox.exec).toHaveBeenLastCalledWith("unshare", ["--net", "--mount-proc", "--", ...dropCapabilities, "node", "/submission/app.js"], expect.anything());
 });
 
 test("treats a malformed declared result file as an evaluator error", async () => {

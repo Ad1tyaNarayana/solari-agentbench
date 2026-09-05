@@ -4,6 +4,19 @@ This is a dated local verification record, not a public certificate or a promise
 that later runs will pass. See [current implementation](current-state.md) for the
 product overview and remaining limits. Run IDs refer to the private local database.
 
+## Release packaging — September 5
+
+The [reviewed public excerpt](review-evidence/README.md) publishes two original
+browser PNGs and selected structured results from the four tutorial comparison
+runs and the unsuccessful Raft retry. Source artifact sizes and hashes were
+rechecked before export. Raw databases, credentials, URLs and replay DOM payloads
+were excluded. This packaging step started no new paid runs.
+
+Fresh release checks: 499 tests passed, four skipped; TypeScript, ESLint and the
+production build passed. New excerpt tests check screenshot hashes, scoring,
+same-snapshot comparison and absence of URLs/raw replay payloads. Review remained
+inline; these checks are not an independent third-party audit or adoption claim.
+
 ## Review follow-up: comparison protocol
 
 The operator approved two Luna tutorial runs and one additional Raft attempt,

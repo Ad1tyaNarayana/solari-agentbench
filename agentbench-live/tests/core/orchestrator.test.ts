@@ -146,11 +146,11 @@ function createHarness(options: {
     async preflight() {
       return { ok: true };
     },
-    async plan(input) {
+    async plan(input, signal) {
       planCalls.push({ ...input, timeoutMs: input.remainingMs() });
       operationOrder.push("planning");
       if (options.plannerNeverResolves) {
-        return new Promise<never>(() => undefined);
+        return new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(Object.assign(new Error("The operation was aborted"), { name: "AbortError" })), { once: true }));
       }
       options.afterPlan?.();
       return plan;
@@ -494,6 +494,19 @@ test("operator cancellation settles a provider that ignores its abort signal", a
 
   expect(completed.stage).toBe("cancelled");
   expect(harness.cancellationCalls).toBe(1);
+  harness.repository.close();
+});
+
+test("operator cancellation during planning survives an SDK-wrapped AbortError", async () => {
+  const harness = createHarness({ plannerNeverResolves: true, taskBudgetMs: 1000 });
+  const created = await harness.orchestrator.create({ taskId: "url-shortener", agentId: "sol-low" });
+  const pending = harness.orchestrator.runCreated(created.run.id, created.selection);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  harness.orchestrator.cancel(created.run.id);
+  const run = await pending;
+  expect(run.stage).toBe("cancelled");
+  expect(run.failureCode).toBeUndefined();
+  expect(harness.workspaceCalls).toBe(0);
   harness.repository.close();
 });
 
