@@ -27,7 +27,7 @@ production build passed. The 49 checked local links resolved, and changed files
 contained no exact local credential values. No third-party audit is claimed.
 
 This is a dated local verification record, not a public certificate or a promise
-that later runs will pass. See [current implementation](current-state.md) for the
+that later runs will pass. See the [README](../README.md) for the
 product overview and remaining limits. Run IDs refer to the private local database.
 
 ## Release packaging — September 5

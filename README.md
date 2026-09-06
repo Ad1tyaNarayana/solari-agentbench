@@ -1,6 +1,6 @@
 # Solari Cookbook
 
-**AgentBench reviewers: [start with the current-state guide](agentbench-live/docs/current-state.md).** It summarizes demonstrated results, unverified tasks, and current limitations.
+**[AgentBench Live — README](agentbench-live/README.md):** capabilities, results, setup, usage, architecture and limitations.
 
 [Inspect real browser screenshots and evaluation results](agentbench-live/docs/review-evidence/README.md) without installing anything.
 
@@ -29,9 +29,9 @@ Shortener; Sol was faster in these four same-snapshot samples.
 **Raft v1.2.0 now has a passing agent run:** 100 quality / 39.21 time-adjusted
 in 12m 45s, including recorded browser verification. A separate reference
 certification also scored 100. Earlier failures remain in the history. The
-[current-state guide](agentbench-live/docs/current-state.md) includes the timings,
-evidence limits and next external-user trial. [Setup](agentbench-live/README.md)
-and [verification details](agentbench-live/docs/evidence-verification.md) support it.
+[AgentBench README](agentbench-live/README.md) contains the full comparison,
+evidence limits, setup and commands. Dated artifacts remain available in the
+[verification record](agentbench-live/docs/evidence-verification.md).
 
 ## Examples
 

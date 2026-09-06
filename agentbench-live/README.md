@@ -1,8 +1,8 @@
 # AgentBench Live
 
-**[Start here: current capabilities, verified results, and limitations](docs/current-state.md).** This README is the setup and command reference.
-
 AgentBench Live is a local-first evaluation workbench for coding and research agents. Define benchmark tasks, configure providers and resource budgets, and evaluate submissions with independent checks on Solari infrastructure.
+
+[Results](#verified-results) · [Setup](#setup) · [Add a benchmark](#add-your-own-benchmark) · [Architecture](#architecture) · [Scoring](#evidence-and-scoring) · [Limitations](#limitations)
 
 ## Verified results
 
@@ -12,14 +12,35 @@ the independent browser evaluator caught same-origin and redirect failures after
 the agents reported successful local checks. Screenshots, replay events, logs and
 integrity-checked artifact downloads make those failures inspectable.
 
-| Task | Latest observed outcome |
+| Task | Recorded comparison / certification outcome |
 | --- | --- |
 | URL Shortener | Both configurations scored **73.33 quality**; the browser checks exposed real deployment failures |
 | Same Stats, Different Graph | Both configurations scored **100 quality**; all ten evaluators passed |
 | Raft Safety Under Faults | **Passed configured checks on v1.2.0:** fresh agent run **100 quality / 39.21 time-adjusted** in 12m 45s; separate live reference certification also scored 100 |
 
-Sol was faster in these single observations. Full timings, configuration details
-and comparison limits are in the [current-state guide](docs/current-state.md).
+### Configuration comparison
+
+| Task | Configuration | Duration | Quality | Time-adjusted |
+| --- | --- | --- | --- | --- |
+| URL Shortener | Sol · Low | 342,158 ms | 73.33 | 64.29 |
+| URL Shortener | Luna · High | 415,976 ms | 73.33 | 52.89 |
+| Statistics | Sol · Low | 147,598 ms | 100 | 100 |
+| Statistics | Luna · High | 337,278 ms | 100 | 88.95 |
+
+These four runs share tutorial snapshot
+`eeaef41fa77d73509cbb84a12fb4c426e0e9187368bfd063dd723cd436c3dbee`.
+Sol was faster with equal measured quality in these samples. Each cell is one
+sequential observation, not repeated randomized trials. Model and reasoning
+effort both differ; provider and infrastructure latency affect timing. This is
+a configuration comparison, not a universal model ranking.
+
+Both URL submissions failed the same-origin and final-URL assertions. Each run's
+two screenshot roles share one digest because the guard blocked navigation.
+The original outcomes remain unchanged. A later local filming run on September 6,
+`97564d50-91ec-4ec3-80ce-33ec10c178af` (Sol · Low), completed with **100 quality**
+and a recorded successful browser flow. That separate attempt is not included
+in the four-run comparison or its public evidence excerpt.
+
 **[Inspect the real screenshots, assertions and comparison data](docs/review-evidence/README.md)**
 without running the app. This reviewed historical excerpt is separate from the
 synthetic demo; the raw local database and unreviewed artifacts stay private.
@@ -45,6 +66,34 @@ example pack adds Raft Safety Under Faults with `raft-codex` (`gpt-5.6-sol`, hig
 reasoning). Both packs are discovered by default and use deterministic evaluators
 with zero model-judge weight. Agent generation remains stochastic. Both packs
 were authored in this repository; external-user validation is the next milestone.
+
+## Limitations
+
+- **Local operator tool:** SQLite and an in-process queue; no multi-tenant hosted
+  service or distributed worker fleet. Do not restart the server during a run.
+- **Small internal sample:** the recorded comparison has one run per task/configuration.
+  Packs were authored here; no independent third-party adoption has been verified.
+  The live comparison exercised Codex, not every available provider adapter.
+- **Bounded verification:** Raft checks pinned fault scenarios and submitted traces,
+  not every possible execution of the protocol. Statistics passes mean the configured
+  seeded numeric/reproducibility checks passed, not a full reproduction of a paper.
+- **Evidence is not a live viewer:** AgentBench retains browser replay JSON, screenshots,
+  sandbox logs and integrity reports. It does not embed a browser replay player,
+  sandbox terminal, desktop viewer or automatic MP4 exporter. Use the Solari console
+  to inspect available live resources and browser replays. Manually edited demo clips
+  are separate artifacts, not a built-in recording feature.
+- **Desktop coverage is limited:** a separate diagnostic verified screenshot capture;
+  there is no scored desktop task or continuous desktop recording.
+- **Statistics capture is limited:** the original comparison retained evaluator
+  reports, not a plot or browser recording.
+- **Trust boundary:** permission-hardened inputs and integrity hashes detect mutation;
+  they are not an impenetrable boundary against a hostile local operator. Screenshots
+  need visual review before publishing: text redaction does not scrub image pixels.
+
+An outside engineer running a task from their own workflow is the next validation
+step. Share a credential-free pack and reviewed results with their permission;
+record setup friction and whether the result helped a real decision. Do not share
+credentials, raw databases or provider session history.
 
 ## Architecture
 
@@ -99,6 +148,34 @@ npm run dev
 Open <http://localhost:3000>. With an empty database the dashboard shows “No runs yet” and a link to an explicitly synthetic example. Synthetic records are excluded from the results table and totals.
 
 Open <http://localhost:3000/studio> to create a custom benchmark. Studio edits the canonical files directly, previews the exact YAML and prompt/rubric assets, detects external edits by revision hash, and atomically swaps a fully validated pack into `benchmarks/local`. Studio-authored packs use the same loader, content-addressed snapshot, orchestrator, and evaluator graph as external packs—there is no lighter test-only execution path. Save before dry-running or launching; paid launches require the explicit credit acknowledgement.
+
+### Page tour
+
+| Page | Use it for |
+| --- | --- |
+| `/` | Select a task and agent, launch a run, compare quality and time-adjusted scores |
+| `/studio` | Create or reopen a pack, edit prompts/checks/weights, preview YAML, validate and save |
+| `/providers` | Inspect adapter capabilities and configured/missing credential references; presence is not a connectivity test |
+| `/runs/[id]` | Read the plan, live events, independent assertions, scores and retained artifacts |
+
+SSE, polling and focus refreshes update run state. A RunPlan is intent, not proof
+that a resource was used; lifecycle stages are coarse orchestration labels.
+“Completed” means evaluation finished, not that the submission passed. Inspect
+the individual `passed`, `failed`, `error` and `skipped` outcomes.
+
+### Record a demo
+
+1. Show the task, evaluator weights, provider and resource/time limits.
+2. Start a real run. In the Solari console, inspect its sandbox terminal or browser
+   while available; after release, use its browser replay if retained there.
+3. Return to the run page and show independent assertions, screenshots and both scores.
+4. Confirm cleanup. Label accelerated sections and distinguish live footage,
+   recorded replays, reference diagnostics and synthetic examples.
+
+Never show API keys, signed connection URLs, credential files or raw databases.
+Public evidence files work without a local account; `/runs/[id]` links require
+the database containing that run. `demo:seed` is synthetic, `certify` evaluates an
+existing submission, and neither is a fresh agent attempt.
 
 ## Benchmark packs
 
@@ -169,6 +246,18 @@ reruns and recorded browser checks. A separate live reference certification also
 scored 100. The output contract was clarified without weakening the verifier;
 earlier failures remain unchanged. This is bounded scenario verification, not
 proof of the complete protocol. [Results and history](examples/packs/raft-consensus-reproduction/certification/STATUS.md).
+
+Agent run `500379cc-3676-489a-8199-2c13d7571b92` passed five evaluators,
+41 command/integrity assertions and eight browser assertions. Its five artifact
+references passed byte-length/SHA-256 checks; the replay contains 20 events.
+Cleanup issues and final live resource inventory were zero.
+[Agent evidence](docs/review-evidence/raft-agent-v1.2.0.json) and
+[reference evidence](docs/review-evidence/raft-reference-v1.2.0.json) keep the
+two workflows distinct. Snapshot:
+`f13ed8a54149a2d5c347b234b685d988ae9a2e5724d98bc6c848400cb443fc35`.
+The v1.2.0 contract clarification changed that snapshot; it is not an unchanged-task
+improvement over v1.1.0. The earlier 900,113 ms timeout and 10-quality schema-failure
+attempt remain historical records, not evidence of passing Raft reproduction.
 
 `examples/packs/raft-consensus-reproduction` is a repository-authored example pack
 based on Ongaro and Ousterhout's [USENIX ATC 2014 paper page](https://www.usenix.org/conference/atc14/technical-sessions/presentation/ongaro)

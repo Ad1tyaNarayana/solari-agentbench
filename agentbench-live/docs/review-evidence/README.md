@@ -92,10 +92,10 @@ were produced. It is excluded from the two-configuration comparison.
 3. Open `results.json`: show `serve` passed and `browser` failed, then the three
    assertion outcomes. Explain that the verifier, not the agent, decides.
 4. Show a Statistics run: all ten checks passed and inputs stayed unchanged.
-5. Close with the current-state guide: customizable packs, optional Solari
+5. Close with the [README](../../README.md): customizable packs, optional Solari
    resources, bounded Raft verification, and no claimed outside adoption yet.
 
 Label that video **a walkthrough of recorded results**, not a freshly running
 benchmark. To film the actual local dashboard, use the
-[review walkthrough](../../REVIEW-WALKTHROUGH.md). Do not open credentials or raw
+[README recording instructions](../../README.md#record-a-demo). Do not open credentials or raw
 database records on camera. No additional paid run is required for this excerpt.

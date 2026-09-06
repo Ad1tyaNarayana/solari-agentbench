@@ -69,7 +69,7 @@ and production build passed. Final live inventory checks found zero browsers,
 sandboxes and desktops. These checks are not Raft certification. Credentials and
 raw local records remain gitignored.
 
-See [current state](../../../../docs/current-state.md) and
+See the [README](../../../../README.md#raft-paper-reproduction-pack) and
 [detailed verification](../../../../docs/evidence-verification.md). Re-run the
 README's explicit certification workflow before claiming a new certificate.
 It provisions billable resources. The September 6 reference and agent attempts

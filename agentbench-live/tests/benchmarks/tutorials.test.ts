@@ -92,7 +92,12 @@ describe("migrated tutorial benchmark", () => {
     expect(readme).toContain("agentbench -- certify");
     expect(readme).toMatch(/Studio[\s\S]*same[\s\S]*snapshot[\s\S]*evaluator/i);
     expect(repositoryReadme).toContain("Raft v1.2.0");
-    expect(repositoryReadme).toContain("agentbench-live/docs/current-state.md");
+    expect(repositoryReadme).toContain("agentbench-live/README.md");
+    expect(readme).toContain("## Limitations");
+    expect(readme).toContain("### Configuration comparison");
+    expect(readme).toContain("### Page tour");
+    expect(readme).not.toContain("current-state.md");
+    expect(repositoryReadme).not.toContain("current-state.md");
   });
 
   it("keeps both bundled tutorials deterministic with zero model-judge points", async () => {
