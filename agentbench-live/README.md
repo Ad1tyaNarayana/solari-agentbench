@@ -40,6 +40,8 @@ The original outcomes remain unchanged. A later local filming run on September 6
 `97564d50-91ec-4ec3-80ce-33ec10c178af` (Sol · Low), completed with **100 quality**
 and a recorded successful browser flow. That separate attempt is not included
 in the four-run comparison or its public evidence excerpt.
+It is reported separately to preserve the original comparison batch rather than
+replace a lower-scoring result with a better later attempt.
 
 **[Inspect the real screenshots, assertions and comparison data](docs/review-evidence/README.md)**
 without running the app. This reviewed historical excerpt is separate from the
