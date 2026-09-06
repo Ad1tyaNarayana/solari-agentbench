@@ -16,7 +16,7 @@ integrity-checked artifact downloads make those failures inspectable.
 | --- | --- |
 | URL Shortener | Both configurations scored **73.33 quality**; the browser checks exposed real deployment failures |
 | Same Stats, Different Graph | Both configurations scored **100 quality**; all ten evaluators passed |
-| Raft Safety Under Faults | **Has not passed.** Latest attempt earned **10 quality / 5.06 time-adjusted** from static checks; a results-schema failure skipped reproduction and browser verification |
+| Raft Safety Under Faults | **Passed configured checks on v1.2.0:** fresh agent run **100 quality / 39.21 time-adjusted** in 12m 45s; separate live reference certification also scored 100 |
 
 Sol was faster in these single observations. Full timings, configuration details
 and comparison limits are in the [current-state guide](docs/current-state.md).
@@ -102,6 +102,30 @@ Open <http://localhost:3000/studio> to create a custom benchmark. Studio edits t
 
 ## Benchmark packs
 
+### Add your own benchmark
+
+For an existing evaluator type, no framework code changes are needed:
+
+1. Open `/studio`, create a pack, and add a task with a clear prompt and required
+   submission files. Include exact JSON/output contracts and example inputs in
+   the prompt; agents should not have to guess an evaluator's private conventions.
+2. Choose allowed resources, a hard time cap, an optional time target, and provider
+   presets. An offline numeric task need not use a browser or desktop.
+3. Add objective checks whose enabled weights total 100. Set prerequisites so
+   invalid inputs skip dependent execution. Use a command evaluator for a custom
+   verification script; a new built-in evaluator is usually unnecessary.
+4. Save and dry-run to validate the pack without provisioning. Test the evaluator
+   against a known-good submission and deliberately broken submissions before
+   spending credits on a model comparison. A dry-run is not a functional pass.
+5. Launch explicitly, then inspect assertions and artifacts. Version changed
+   contracts and compare configurations only on the same snapshot.
+
+Studio saves canonical packs under `benchmarks/local`; the dashboard discovers
+them automatically. For CLI use, set `AGENTBENCH_BENCHMARK_ROOTS` to the pack's
+path (this override replaces default roots). Share the pack files, never your
+credentials or local run database. Basic file/schema/numeric tasks are primarily
+configuration work; research tasks need carefully tested verifier code.
+
 Benchmark packs are canonical, version-controlled folders. The bundled tutorial is at `benchmarks/tutorials/agentbench-live`:
 
 ```text
@@ -139,11 +163,12 @@ sampling, rubric, prompt/input digests, usage, redacted responses and repair cou
 
 ## Raft paper-reproduction pack
 
-**Current result: Raft has not passed end-to-end.** The latest agent submission
-failed the results schema before reproduction could run. Its 10-point score
-covers only the entrypoint and methodology checks; algorithm correctness remains
-unverified. [Attempt details](examples/packs/raft-consensus-reproduction/certification/STATUS.md)
-are retained for investigation.
+**Current result: Raft v1.2.0 passed all configured checks.** A fresh agent run
+earned 100 quality / 39.21 time-adjusted in 12m 45s, including independent scenario
+reruns and recorded browser checks. A separate live reference certification also
+scored 100. The output contract was clarified without weakening the verifier;
+earlier failures remain unchanged. This is bounded scenario verification, not
+proof of the complete protocol. [Results and history](examples/packs/raft-consensus-reproduction/certification/STATUS.md).
 
 `examples/packs/raft-consensus-reproduction` is a repository-authored example pack
 based on Ongaro and Ousterhout's [USENIX ATC 2014 paper page](https://www.usenix.org/conference/atc14/technical-sessions/presentation/ongaro)
@@ -241,7 +266,7 @@ npm run agentbench -- demo:seed
 
 ## Evidence and scoring
 
-Bundled packs v1.1 use a **five-minute target and 15-minute hard cap**. Work
+The tutorial v1.1 and Raft v1.2 packs use a **five-minute target and 15-minute hard cap**. Work
 may continue past the target; the hard cap still cancels it. The quality score
 stays unchanged. A separate time-adjusted score is
 `quality × min(1, targetMs / elapsedMs)`, rounded to two decimals. Thus a

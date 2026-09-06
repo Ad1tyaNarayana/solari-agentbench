@@ -1,6 +1,6 @@
 # Inspect a real comparison
 
-This is a reviewed excerpt of five **historical live runs**, not synthetic demo
+The original `results.json` is a reviewed excerpt of five **historical live runs**, not synthetic demo
 data and not a new benchmark run. The first four form one same-snapshot tutorial
 comparison; the fifth records the unsuccessful Raft attempt. No account or local
 server is needed to inspect these files.
@@ -60,9 +60,27 @@ types and relative timestamps; DOM and other payloads are deliberately omitted.
 The full replay source hashes identify the private originals. This excerpt is
 not a playable recording, and hashes alone are not independent certification.
 
-## 4. Keep the incomplete task visible
+## 4. Raft: new success and preserved history
 
-Raft **has not passed**. Run `7e5cda2b-544d-4fb6-8765-40e67c466f30` earned
+On September 6, Raft v1.2.0 passed all configured checks in both a
+[fresh agent run](raft-agent-v1.2.0.json) and a separate
+[live reference certification](raft-reference-v1.2.0.json). The agent earned
+**100 quality / 39.21 time-adjusted** in **765,093 ms (12m 45s)**. Both workflows
+passed five evaluators, including 41 command/integrity assertions and eight
+browser assertions, retained 20 replay events, and reported zero cleanup issues.
+
+![Raft verifier browser showing the minority-isolation trace](raft-reference.png)
+
+The original reference PNG is shown above. The agent run independently produced
+the exact same screenshot bytes (matching SHA-256), because the normalized viewer
+showed the same final state. Replay hashes differ. This screenshot is not a view
+of the agent writing code or a full simulation video.
+
+The explicit task contract changed the pack snapshot to v1.2.0; the verifier was
+not weakened. These checks cover five pinned scenarios and submitted traces,
+not exhaustive correctness of the complete Raft protocol.
+
+**Preserved historical failure:** v1.1.0 run `7e5cda2b-544d-4fb6-8765-40e67c466f30` earned
 10 quality / 5.06 time-adjusted from static checks. Its results schema failed,
 so reproduction and browser verification were skipped. No Raft capture artifacts
 were produced. It is excluded from the two-configuration comparison.
@@ -75,7 +93,7 @@ were produced. It is excluded from the two-configuration comparison.
    assertion outcomes. Explain that the verifier, not the agent, decides.
 4. Show a Statistics run: all ten checks passed and inputs stayed unchanged.
 5. Close with the current-state guide: customizable packs, optional Solari
-   resources, experimental Raft, and no claimed outside adoption yet.
+   resources, bounded Raft verification, and no claimed outside adoption yet.
 
 Label that video **a walkthrough of recorded results**, not a freshly running
 benchmark. To film the actual local dashboard, use the

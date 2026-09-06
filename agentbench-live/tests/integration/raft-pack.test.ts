@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
+import Ajv2020 from "ajv/dist/2020";
 import { BenchmarkLoader } from "@/core/benchmarks/loader";
 import { BenchmarkCatalog } from "@/core/benchmarks/catalog";
 import { CertificationService } from "@/core/certification/service";
@@ -15,6 +16,18 @@ const packRoot = resolve("examples/packs/raft-consensus-reproduction");
 const taskRoot = join(packRoot, "tasks", "raft-safety");
 const referenceRoot = join(packRoot, "reference-submission");
 const temporaryRoots: string[] = [];
+
+test("Raft instructions expose a schema-valid results contract and verifier event vocabulary", async () => {
+  const prompt = await readFile(join(taskRoot, "prompt.md"), "utf8");
+  const example = prompt.match(/<!-- results-contract -->\s*```json\s*([\s\S]*?)```/);
+  expect(example, "agent must receive an exact results.json example").not.toBeNull();
+  const schema = JSON.parse(await readFile(join(taskRoot, "evaluators/results.schema.json"), "utf8"));
+  expect(new Ajv2020().validate(schema, JSON.parse(example![1]))).toBe(true);
+  const verifier = await readFile(join(taskRoot, "evaluators/verify-raft.mjs"), "utf8");
+  const events = [...verifier.matchAll(/(?:event|item)\.type === "([^"]+)"/g)].map(m => m[1]);
+  for (const event of new Set(events)) expect(prompt).toContain(`\`${event}\``);
+  for (const name of ["finalTerm", "finalLeader", "partitionObserved", "logMatching", "leaderCompleteness", "stateMachineSafety", "quorumBehavior"]) expect(prompt).toContain(`\`${name}\``);
+});
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) =>

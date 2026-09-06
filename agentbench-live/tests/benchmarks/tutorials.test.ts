@@ -85,13 +85,13 @@ describe("migrated tutorial benchmark", () => {
     const repositoryReadme = await readFile(join(process.cwd(), "..", "README.md"), "utf8");
     expect(readme).toMatch(/local-first evaluation workbench/i);
     expect(readme).toMatch(/permission-hardened input trees[\s\S]*tamper detection/i);
-    expect(readme).toMatch(/Raft Safety Under Faults[^\n]*Has not passed/);
+    expect(readme).toContain("docs/review-evidence/README.md");
     expect(readme).toMatch(/fallback keeps networking isolated[\s\S]*both probes fail/);
     expect(readme).toMatch(/zero.*model-judge/i);
     expect(readme).toContain("raft-consensus-reproduction");
     expect(readme).toContain("agentbench -- certify");
     expect(readme).toMatch(/Studio[\s\S]*same[\s\S]*snapshot[\s\S]*evaluator/i);
-    expect(repositoryReadme).toContain("Raft has not passed");
+    expect(repositoryReadme).toContain("Raft v1.2.0");
     expect(repositoryReadme).toContain("agentbench-live/docs/current-state.md");
   });
 

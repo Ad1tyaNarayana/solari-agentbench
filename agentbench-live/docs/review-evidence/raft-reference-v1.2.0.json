@@ -1,0 +1,305 @@
+{
+  "kind": "reviewed-live-reference-excerpt",
+  "runId": "cert-19ddb7c0-3ebe-4fdf-b196-317ff68bcd80",
+  "benchmark": {
+    "id": "raft-consensus-reproduction",
+    "version": "1.2.0",
+    "digest": "f13ed8a54149a2d5c347b234b685d988ae9a2e5724d98bc6c848400cb443fc35"
+  },
+  "submissionDigest": "70ae51057ef81d63d3e0975770327700708d6c5af18bef68e9ff65ab05af5824",
+  "createdAt": "2026-09-06T06:16:26.203Z",
+  "baseRepositoryCommit": "1e855693c375a2b1dc33065045abaf76fe47f463",
+  "workingTreeChanges": "Raft prompt contract and pack version changed to v1.2.0 before this run. Benchmark digest above identifies the exact task snapshot. Runtime and verifier unchanged.",
+  "agentId": null,
+  "quality": 100,
+  "evaluationStatus": "valid-score",
+  "evaluators": [
+    {
+      "id": "run-entry",
+      "status": "passed",
+      "earnedPoints": 5,
+      "possiblePoints": 5,
+      "assertions": [
+        {
+          "id": "run-entry.present",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "results",
+      "status": "passed",
+      "earnedPoints": 5,
+      "possiblePoints": 5,
+      "assertions": [
+        {
+          "id": "results.schema",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "methodology",
+      "status": "passed",
+      "earnedPoints": 5,
+      "possiblePoints": 5,
+      "assertions": [
+        {
+          "id": "methodology.min-bytes",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "verify-raft",
+      "status": "passed",
+      "earnedPoints": 65,
+      "possiblePoints": 65,
+      "assertions": [
+        {
+          "id": "stable-election.determinism",
+          "passed": true
+        },
+        {
+          "id": "stable-election.terminal",
+          "passed": true
+        },
+        {
+          "id": "stable-election.claims",
+          "passed": true
+        },
+        {
+          "id": "stable-election.electionSafety",
+          "passed": true
+        },
+        {
+          "id": "stable-election.logMatching",
+          "passed": true
+        },
+        {
+          "id": "stable-election.leaderCompleteness",
+          "passed": true
+        },
+        {
+          "id": "stable-election.stateMachineSafety",
+          "passed": true
+        },
+        {
+          "id": "stable-election.quorumBehavior",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.determinism",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.terminal",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.claims",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.electionSafety",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.logMatching",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.leaderCompleteness",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.stateMachineSafety",
+          "passed": true
+        },
+        {
+          "id": "leader-failover.quorumBehavior",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.determinism",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.terminal",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.claims",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.electionSafety",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.logMatching",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.leaderCompleteness",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.stateMachineSafety",
+          "passed": true
+        },
+        {
+          "id": "minority-isolation.quorumBehavior",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.determinism",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.terminal",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.claims",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.electionSafety",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.logMatching",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.leaderCompleteness",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.stateMachineSafety",
+          "passed": true
+        },
+        {
+          "id": "majority-recovery.quorumBehavior",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.determinism",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.terminal",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.claims",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.electionSafety",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.logMatching",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.leaderCompleteness",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.stateMachineSafety",
+          "passed": true
+        },
+        {
+          "id": "divergent-log-repair.quorumBehavior",
+          "passed": true
+        },
+        {
+          "id": "verify-raft.input-integrity",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": "inspect-trace",
+      "status": "passed",
+      "earnedPoints": 20,
+      "possiblePoints": 20,
+      "assertions": [
+        {
+          "id": "inspect-trace.2",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.4",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.5",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.6",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.7",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.9",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.10",
+          "passed": true
+        },
+        {
+          "id": "inspect-trace.11",
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "resourceCounts": {
+    "browsers": 1,
+    "sandboxes": 1,
+    "desktops": 0
+  },
+  "cleanupIssueCount": 0,
+  "artifacts": [
+    {
+      "role": "input-integrity",
+      "sha256": "52b94687c3b29435f4e1f4e888f9ccd01186dcffcf3f72f165e9864f40ecd20b",
+      "bytes": 112,
+      "mimeType": "application/json"
+    },
+    {
+      "role": "browser-replay",
+      "sha256": "7a58b110a3eb4cdd058c2a18ba03480806c8f495c8d7c24e0b5be78cad1a2473",
+      "bytes": 8975,
+      "mimeType": "application/json"
+    },
+    {
+      "role": "raft-fault-trace",
+      "sha256": "83e91c65388c92ebb86bdd808f2963ed0461159a697e64a81ef5ef925c019951",
+      "bytes": 38021,
+      "mimeType": "image/png"
+    },
+    {
+      "role": "stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mimeType": "text/plain"
+    },
+    {
+      "role": "stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mimeType": "text/plain"
+    }
+  ],
+  "omitted": "Signed URLs, resource handles, raw replay DOM and private database are excluded. This is a reference pipeline result, not a model-generated submission or proof of the full Raft protocol."
+}

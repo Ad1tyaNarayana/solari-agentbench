@@ -1,5 +1,31 @@
 # Live evidence verification — September 5, 2026
 
+## September 6 follow-up: Raft v1.2.0
+
+One approved reference certification and one fresh agent attempt both passed all
+five evaluators. The task prompt now explicitly documents its output contract;
+the pack is v1.2.0 and the verifier/weights were unchanged. Earlier records below
+are historical and were not rewritten or rescored.
+
+- Reference `cert-19ddb7c0-3ebe-4fdf-b196-317ff68bcd80`: 100 quality.
+- Agent `500379cc-3676-489a-8199-2c13d7571b92`: 100 quality / 39.21 time-adjusted,
+  765,093 ms; five passed evaluators, 41 command/integrity and eight browser assertions.
+- Both retained a PNG, 20 replay events, integrity report and empty stdout/stderr.
+  All five artifact references in each workflow passed size and SHA-256 checks.
+- Cleanup issues: zero. Final SDK inventory returned zero browsers, sandboxes, desktops.
+- [Reviewed reference excerpt](review-evidence/raft-reference-v1.2.0.json) and
+  [reviewed agent excerpt](review-evidence/raft-agent-v1.2.0.json) omit signed URLs,
+  resource handles and raw replay DOM. The normalized viewer PNG matches across
+  the runs; replay digests differ. This is bounded scenario verification, not
+  proof of arbitrary fault handling or full Raft correctness.
+
+The live report exposed a redaction gap for AWS presigned replay URLs. A failing
+regression test reproduced it; recognizing the credential/signature/security-token
+parameter names fixes future redaction. Existing raw reports stay private.
+Final local checks: 503 tests passed, four skipped; TypeScript, ESLint and
+production build passed. The 49 checked local links resolved, and changed files
+contained no exact local credential values. No third-party audit is claimed.
+
 This is a dated local verification record, not a public certificate or a promise
 that later runs will pass. See [current implementation](current-state.md) for the
 product overview and remaining limits. Run IDs refer to the private local database.

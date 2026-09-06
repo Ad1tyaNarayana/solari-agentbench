@@ -1,6 +1,6 @@
 # AgentBench Live — current implementation
 
-Updated September 5, 2026 for the reviewed implementation release. This overview summarizes
+Updated September 6, 2026 after live Raft verification. This overview summarizes
 the implemented platform and observed local results.
 
 AgentBench runs configurable coding and research benchmarks with independent
@@ -10,8 +10,9 @@ providers are configured separately. The application is a trusted local operator
 **Demonstrated:** a same-snapshot Sol/Luna comparison, successful independent
 statistics reproduction for both configurations, and browser checks that caught
 URL Shortener deployment failures after agent-reported success. Captured artifacts
-passed download, size and hash checks. **Raft has not passed:** its latest results
-schema failure prevented reproduction and browser verification.
+passed download, size and hash checks. **Raft v1.2.0 passed its configured checks**
+in a fresh agent run and a separate reference certification, including recorded
+browser verification. This is bounded scenario coverage, not full protocol proof.
 
 **[Inspect the public evidence excerpt](review-evidence/README.md):** original
 browser screenshots, selected assertions, scores, integrity reports and a short
@@ -36,13 +37,14 @@ walkthrough. No credentials, installation or paid run required.
 | --- | --- | --- |
 | URL Shortener | **Evaluated — partial pass** | Contract checks, fresh sandbox build, recorded browser assertions and screenshots |
 | Same Stats, Different Graph | **Evaluated — full pass** | Offline seeded reproduction, byte reproducibility, statistics and ellipse RMSE |
-| Raft Safety Under Faults | **Unverified replication — results contract failed** | Repeated fault scenarios, trace-derived safety checks, recorded browser trace-viewer checks |
+| Raft Safety Under Faults | **Evaluated — full pass on v1.2.0** | Repeated fault scenarios, trace-derived safety checks, recorded browser trace-viewer checks |
 
 The tutorial pack (`agentbench-live`) offers `sol-low` and `luna-high` for its
 two tasks. The Raft pack (`raft-consensus-reproduction`) offers `raft-codex`.
 Configured checks describe what would run, not proof that a task has completed.
 
-Both packs are v1.1.0. All three tasks use deterministic checks with zero
+Tutorial is v1.1.0; Raft is v1.2.0 with explicit agent-facing output contracts.
+All three tasks use deterministic checks with zero
 model-judge weight; agent generation is not deterministic. Empty/unset
 `AGENTBENCH_BENCHMARK_ROOTS` discovers both packs; a nonempty override replaces
 the defaults. Studio-saved writable packs also appear in the dashboard.
@@ -101,7 +103,20 @@ Run IDs, artifact checks and earlier attempts are in the
 in the [evidence excerpt](review-evidence/results.json); the raw database stays
 private. This is an author-published record, not third-party certification.
 
-**Raft replication remains unverified.** The single follow-up attempt
+**Raft v1.2.0 passed on September 6.** Agent run
+`500379cc-3676-489a-8199-2c13d7571b92` completed in 765,093 ms with **100 quality /
+39.21 time-adjusted**. All five evaluators passed, including 41 command/integrity
+assertions and eight browser assertions. Five artifact references passed byte
+length and SHA-256 checks; the replay contains 20 events. Cleanup issues: zero;
+final inventory: zero browsers, sandboxes and desktops. A separate live reference
+certification also scored 100. [Agent evidence](review-evidence/raft-agent-v1.2.0.json)
+and [reference evidence](review-evidence/raft-reference-v1.2.0.json) keep the two
+workflows distinct. Snapshot: `f13ed8a54149a2d5c347b234b685d988ae9a2e5724d98bc6c848400cb443fc35`.
+The clarified task contract changed the snapshot; do not compare its score as
+an unchanged-task improvement over v1.1.0. Checks cover pinned scenarios and
+submitted traces, not exhaustive Raft correctness or a production implementation.
+
+**Historical v1.1.0 failure, retained unchanged:** the single follow-up attempt
 `7e5cda2b-544d-4fb6-8765-40e67c466f30` finished in 592,394 ms with **10 quality /
 5.06 time-adjusted** from static checks only. Its `results.json` failed the schema
 contract, so reproduction and browser verification were skipped and no capture
@@ -118,7 +133,7 @@ of the two-configuration tutorial comparison.
 | Sandbox logs, assertions and input-integrity reports | Live terminal viewer or terminal video |
 | Statistics reproduction results in evaluator reports | Retained statistics plot or browser recording for that task |
 | Separate live desktop screenshot/readiness diagnostic | Scored desktop task or continuous desktop recording |
-| Raft task, verifier and reference implementation | Successfully verified Raft replication or new post-fix Raft certificate |
+| Passing Raft v1.2.0 agent run and separate live reference certification | Exhaustive Raft correctness, unseen-fault generalization or production readiness |
 
 Replay uses Solari's CDP default context, release, bounded retrieval, local JSON
 redaction and hashing. Missing evidence is labeled honestly. Lifecycle stages are
@@ -149,6 +164,10 @@ and useful decisions are the follow-up evidence to collect. Share packs and
 reviewed summaries, never credential stores or raw databases.
 
 ## Verification and privacy
+
+September 6: 503 tests passed, four skipped; TypeScript, ESLint and build passed
+during the Raft fix. Presigned AWS replay URL parameters are now redacted; older
+raw reports may still contain expired signed links and must remain private.
 
 Release verification on September 5: 499 tests passed, four skipped; TypeScript,
 ESLint and production build passed. The staged-file secret scan and 35 local

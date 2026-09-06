@@ -1,7 +1,7 @@
 schemaVersion: 1
 id: raft-consensus-reproduction
 name: Raft Consensus Reproduction
-version: 1.1.0
+version: 1.2.0
 description: Reproduce Raft safety and recovery claims under deterministic faults.
 taskRoots: [tasks]
 defaults:

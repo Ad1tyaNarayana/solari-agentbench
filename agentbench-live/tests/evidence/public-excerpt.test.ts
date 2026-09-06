@@ -3,6 +3,31 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect, it } from "vitest";
 import excerpt from "../../docs/review-evidence/results.json";
+import raftReference from "../../docs/review-evidence/raft-reference-v1.2.0.json";
+import raftAgent from "../../docs/review-evidence/raft-agent-v1.2.0.json";
+
+it("retains the passing agent result separately on the certified Raft snapshot", () => {
+  expect(raftAgent.agentId).toBe("raft-codex");
+  expect(raftAgent.benchmarkDigest).toBe(raftReference.benchmark.digest);
+  expect(raftAgent.quality).toBe(100);
+  expect(raftAgent.timeAdjusted).toBe(39.21);
+  expect(raftAgent.durationMs).toBe(765093);
+  expect(raftAgent.evaluators.every(e => e.status === "passed" && e.assertions.every(a => a.passed))).toBe(true);
+  expect(raftAgent.artifacts.find(e => e.role === "raft-fault-trace")?.sha256).toBe(raftReference.artifacts.find(e => e.role === "raft-fault-trace")?.sha256);
+  expect(JSON.stringify(raftAgent)).not.toMatch(/https?:\/\/|X-Amz-|pt_token=/i);
+});
+
+it("identifies the live Raft reference separately from model runs and verifies its screenshot", async () => {
+  expect(raftReference.agentId).toBeNull();
+  expect(raftReference.quality).toBe(100);
+  expect(raftReference.evaluators.every(e => e.status === "passed" && e.assertions.every(a => a.passed))).toBe(true);
+  expect(raftReference.cleanupIssueCount).toBe(0);
+  const bytes = await readFile(resolve("docs/review-evidence/raft-reference.png"));
+  const artifact = raftReference.artifacts.find(e => e.role === "raft-fault-trace")!;
+  expect(bytes.length).toBe(artifact.bytes);
+  expect(createHash("sha256").update(bytes).digest("hex")).toBe(artifact.sha256);
+  expect(JSON.stringify(raftReference)).not.toMatch(/https?:\/\/|X-Amz-|pt_token=/i);
+});
 
 it("keeps the published comparison and unsuccessful Raft attempt explicit", () => {
   expect(excerpt.kind).toBe("reviewed-historical-live-run-excerpt");

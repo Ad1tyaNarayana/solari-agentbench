@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { EnvironmentCredentialStore } from "@/core/credentials/environment-store";
 import {
   redactCredentialError,
+  redactCredentialText,
   redactCredentialOutput,
   snapshotCredentialRedaction,
 } from "@/core/credentials/redaction";
@@ -396,3 +397,9 @@ function collectErrorText(value: unknown): string {
   visit(value);
   return strings.join("\n");
 }
+test("redacts presigned object-store recording URLs without removing public URLs", () => {
+  const signed = "https://replays.s3.amazonaws.com/session.gz?X-Amz-Credential=example%2Fscope&X-Amz-Security-Token=example-session&X-Amz-Signature=example-signature";
+  expect(redactCredentialText(signed)).toBe("[REDACTED_SIGNED_URL]");
+  expect(JSON.stringify(redactCredentialOutput({ metadata: { replayUrl: signed }, evidence: [{ external: { url: signed } }] }))).not.toContain("example-session");
+  expect(redactCredentialText("https://example.com/paper.pdf")).toBe("https://example.com/paper.pdf");
+});

@@ -26,8 +26,9 @@ while independent browser checks exposed URL Shortener deployment failures after
 agent-reported success. Both scored 100 quality on Statistics and 73.33 on URL
 Shortener; Sol was faster in these four same-snapshot samples.
 
-**Raft has not passed.** Its latest attempt earned 10 points from static checks;
-a schema failure skipped reproduction and browser verification. The
+**Raft v1.2.0 now has a passing agent run:** 100 quality / 39.21 time-adjusted
+in 12m 45s, including recorded browser verification. A separate reference
+certification also scored 100. Earlier failures remain in the history. The
 [current-state guide](agentbench-live/docs/current-state.md) includes the timings,
 evidence limits and next external-user trial. [Setup](agentbench-live/README.md)
 and [verification details](agentbench-live/docs/evidence-verification.md) support it.

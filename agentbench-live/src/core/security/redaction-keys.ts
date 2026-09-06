@@ -21,6 +21,9 @@ const credentialKeys = new Set([
   "clientsecret",
   "signature",
   "credential",
+  "xamzcredential",
+  "xamzsecuritytoken",
+  "xamzsignature",
   "password",
   "passphrase",
 ]);

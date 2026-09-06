@@ -1,13 +1,13 @@
 # AgentBench review and recording walkthrough
 
-Updated September 5, 2026 for the reviewed implementation release. This supersedes the
+Updated September 6, 2026 after live Raft verification. This supersedes the
 earlier review against c25e24c. See [current state](docs/current-state.md) and
 [verification details](docs/evidence-verification.md). This is not a certificate.
 
 Lead the recording with the demonstrated result: the browser evaluator caught a
 deployment failure after agent-reported success, and both configurations passed
-the statistics checks. State Raft's outcome directly: its results schema failed,
-so replication and browser checks were skipped. Save implementation limits for
+the statistics checks. Raft v1.2.0 now has a passing agent run and a separate
+passing reference certification, with browser evidence. Save implementation limits for
 the relevant chapter rather than opening with a list of caveats.
 
 ## Start the local app
@@ -65,9 +65,14 @@ timeout has no valid quality score. Stages are coarse orchestration labels.
 - [URL Shortener](http://127.0.0.1:3000/runs/206605e5-7870-4d32-888e-f6926834f595):
   73.33 quality / 64.29 time-adjusted in 5m 42s. Show the HTTP/HTTPS link
   failure, screenshots, replay JSON and sandbox logs.
-- [Raft follow-up](http://127.0.0.1:3000/runs/7e5cda2b-544d-4fb6-8765-40e67c466f30):
+- [Raft v1.2.0](http://127.0.0.1:3000/runs/500379cc-3676-489a-8199-2c13d7571b92):
+  100 quality / 39.21 time-adjusted in 12m 45s. All five evaluators passed,
+  including 41 command/integrity assertions and eight browser assertions.
+  Show the trace-viewer PNG and replay metadata. This is an agent run, separate
+  from the reference certification. It covers the pinned scenarios, not all Raft.
+- [Historical Raft v1.1.0 follow-up](http://127.0.0.1:3000/runs/7e5cda2b-544d-4fb6-8765-40e67c466f30):
   10 quality / 5.06 time-adjusted in 9m 52s, from static checks only. Results
-  schema failure skipped reproduction and browser capture. Replication remains
+  schema failure skipped reproduction and browser capture. That submission remains
   unverified; “completed” does not mean “passed.” The earlier timeout remains
   visible in the run history.
 

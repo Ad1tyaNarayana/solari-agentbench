@@ -1,11 +1,33 @@
 # Raft live certification status
 
-Updated September 5, 2026 against the local working tree.
+Updated September 6, 2026 after live v1.2.0 verification.
 
-**Raft has not passed end-to-end.** The latest agent attempt earned 10 quality /
-5.06 time-adjusted from static checks; results-schema failure skipped reproduction
-and browser verification. No successful current live reference certificate has
-been established either. The two workflows are tracked separately below.
+**Both the v1.2.0 reference and a fresh agent submission passed all configured
+checks.** The agent scored 100 quality / 39.21 time-adjusted in 765,093 ms.
+Reference and agent results are distinct; neither establishes exhaustive protocol
+correctness beyond the pinned scenarios and submitted traces.
+
+## September 6: v1.2.0
+
+- Reference: `cert-19ddb7c0-3ebe-4fdf-b196-317ff68bcd80`, 100 quality.
+- Agent: `500379cc-3676-489a-8199-2c13d7571b92`, `raft-codex`, 100 quality /
+  39.21 time-adjusted. No patched submission or automatic retry.
+- Each passed all five evaluators, including 41 command/integrity assertions
+  and eight browser assertions. Each retained five artifact references and
+  20 browser replay events. Every artifact's size and hash was checked.
+- Cleanup issues: zero. Final account inventory: zero browsers, sandboxes, desktops.
+- Snapshot: `f13ed8a54149a2d5c347b234b685d988ae9a2e5724d98bc6c848400cb443fc35`.
+
+v1.2.0 clarifies the exact results metadata, scenario operations, trace vocabulary
+and summary fields in the agent prompt. The verifier and weights were unchanged.
+The old snapshot/results below remain historical, not rescored comparisons.
+The reference report names the base runtime commit while the prompt/version
+changes were in the working tree; the snapshot digest identifies the task bytes.
+
+Reviewed [reference excerpt](../../../../docs/review-evidence/raft-reference-v1.2.0.json),
+[agent excerpt](../../../../docs/review-evidence/raft-agent-v1.2.0.json) and
+[screenshot walkthrough](../../../../docs/review-evidence/README.md) exclude signed
+URLs and private resource handles. Do not publish the raw local certificate.
 
 ## Earlier reference attempt
 
@@ -15,10 +37,10 @@ not a completed certificate.
 
 The shared browser adapter now creates recorded sessions, connects through CDP,
 uses the default context, releases, and downloads events into the local evidence
-store. This was verified on URL Shortener, not through a new successful Raft
-reference certification. The shared fix does not retroactively certify Raft.
+store. The September 6 reference certification above subsequently verified this
+path on Raft. It does not retroactively change the earlier failed attempt.
 
-## Latest model attempt
+## Historical v1.1.0 model attempts
 
 Pack v1.1.0, run `7e5cda2b-544d-4fb6-8765-40e67c466f30`, agent `raft-codex`
 (`gpt-5.6-sol`, high reasoning): completed in 592,394 ms with **10 quality / 5.06
@@ -42,7 +64,7 @@ namespace when nested user namespaces are unavailable. Offline tasks still fail
 closed if neither supported isolation path works. The fallback keeps offline
 commands isolated; it never silently enables networking.
 
-Latest shared-code checks: 496 tests passed, four skipped; TypeScript, ESLint
+Historical September 5 shared-code checks: 496 tests passed, four skipped; TypeScript, ESLint
 and production build passed. Final live inventory checks found zero browsers,
 sandboxes and desktops. These checks are not Raft certification. Credentials and
 raw local records remain gitignored.
@@ -50,4 +72,5 @@ raw local records remain gitignored.
 See [current state](../../../../docs/current-state.md) and
 [detailed verification](../../../../docs/evidence-verification.md). Re-run the
 README's explicit certification workflow before claiming a new certificate.
-It provisions billable resources and was not rerun for this documentation update.
+It provisions billable resources. The September 6 reference and agent attempts
+above were explicitly approved and were not automatically retried.
